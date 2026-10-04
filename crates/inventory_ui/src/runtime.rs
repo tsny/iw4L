@@ -75,7 +75,17 @@ fn keyboard_and_modal(
     view: Option<Res<InventoryView>>,
     mut overlay: ResMut<InventoryOverlay>,
     mut modal: ResMut<frame::ModalInput>,
+    hud_input: Option<Res<frame::HudInputView>>,
 ) {
+    // Tab toggles the overlay in a match. Resetting the key keeps its retail
+    // `+scores` bind from also firing. The console keeps Tab for completion.
+
+    let typing = hud_input.is_some_and(|input| input.console_open || input.script_menu_open);
+    if view.is_some() && !typing && keys.just_pressed(KeyCode::Tab) {
+        let open = !overlay.open;
+        overlay.set_open(open);
+        keys.reset(KeyCode::Tab);
+    }
     if overlay.open && keys.just_pressed(KeyCode::Escape) {
         overlay.set_open(false);
         keys.reset(KeyCode::Escape);

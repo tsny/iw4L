@@ -207,7 +207,7 @@ Owned paths: new `crates/net/src/transport/inventory_wire.rs` plus narrow regist
 
 ### Inventory overlay
 
-Status: complete on 2026-10-04. Runtime opening remains an explicit request until the owner chooses the default keyboard binding.
+Status: complete on 2026-10-04. In a match, Tab toggles the overlay and replaces the retail `+scores` bind on that key; the console keeps Tab for completion.
 
 Owned paths: new `crates/inventory_ui/`, the generic modal contract in `frame`, and narrow plugin/input registration. Depends on catalog/grid core and presented simulation state; it may begin against the lab adapter before network transport is finished. Deliver two grids, drag/rotate, tooltip, pending UX, cursor/input capture, teardown, and placeholder icons. Complete when the same UI works in the asset-free lab and emits one transaction per completed drop.
 
@@ -246,7 +246,7 @@ Every package runs the narrowest relevant Cargo checks and records what could no
 - Not verified: a spawned weapon's model and pickup inside a retail-data match; the overlay inside a retail-data match; an accepted cross-container transfer before world containers and access grants exist; multiplayer bandwidth under populated inventories; world-model availability; map use targeting; death policy; item effects; or persistence.
 - Current blocker: live map/render acceptance needs legally obtained game data. Catalog, grid, authoring tools, simulation, codecs, and placeholder UI are not blocked.
 - Next package: perform the data-backed visual/pickup acceptance for **World spawn foundation and weapon pickup** when game data is available, then extend the typed recipe to aggregate world loot containers. Do not begin persistence or turn weapons into grid-inventory instances.
-- Owner decisions still open: inventory/death retention policy; default backpack dimensions; initial keyboard binding; missing runtime presentation policy; whether rifle ammo targets the held weapon or an authored weapon family.
+- Owner decisions still open: inventory/death retention policy; default backpack dimensions; missing runtime presentation policy; whether rifle ammo targets the held weapon or an authored weapon family.
 
 ## Session finish
 
