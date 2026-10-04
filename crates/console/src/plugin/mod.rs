@@ -91,6 +91,7 @@ impl Plugin for ConsolePlugin {
             .init_resource::<crate::ConsoleQueue>()
             .init_resource::<crate::ConsoleLine>()
             .init_resource::<crate::weapon_dispatch::WeaponArgCompletions>()
+            .init_resource::<crate::spawn_dispatch::SpawnArgCompletions>()
             .init_resource::<crate::user_settings::PendingMenuBinding>()
             .init_resource::<crate::user_settings::UserSettingsPersistence>()
             .init_resource::<sim::LocalPlayerProfile>()
@@ -173,8 +174,12 @@ impl Plugin for ConsolePlugin {
                         )
                             .chain(),
                         crate::class_dispatch::complete_pending_spawn,
-                        crate::weapon_dispatch::clear_weapon_args_on_torn_down,
-                        crate::weapon_dispatch::refresh_weapon_arg_completions,
+                        (
+                            crate::weapon_dispatch::clear_weapon_args_on_torn_down,
+                            crate::weapon_dispatch::refresh_weapon_arg_completions,
+                            crate::spawn_dispatch::refresh_model_completions,
+                        )
+                            .chain(),
                         crate::weapon_dispatch::route_weapon_commands,
                     )
                         .chain(),
@@ -643,6 +648,7 @@ fn setup_console(
     mut registry: ResMut<ConsoleRegistry>,
     mut binds: ResMut<KeyBinds>,
     weapon_completions: Res<crate::weapon_dispatch::WeaponArgCompletions>,
+    spawn_completions: Res<crate::spawn_dispatch::SpawnArgCompletions>,
 ) {
     binds.apply_defaults();
     if registry.resolve("hold").is_none() {
@@ -738,7 +744,12 @@ fn setup_console(
         crate::CommandSpec::new("mark")
             .usage("mark <label> — log a monotonic engine timestamp for external timing"),
     );
-    crate::spawn_dispatch::register(&mut registry, presets, &weapon_completions);
+    crate::spawn_dispatch::register(
+        &mut registry,
+        presets,
+        &weapon_completions,
+        &spawn_completions,
+    );
     crate::weapon_dispatch::register_weapon_commands(&mut registry, &weapon_completions);
     crate::debug_move::register_debug_move_commands(&mut registry);
     crate::loot_dispatch::register(&mut registry);

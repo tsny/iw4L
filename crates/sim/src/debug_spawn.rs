@@ -1,4 +1,4 @@
-use crate::bullet_collision::MASK_PLAYER_SOLID;
+use crate::bullet_collision::{MASK_PLAYER_SOLID, PLAYER_MAXS, PLAYER_MINS};
 use crate::frame::FrameWorld;
 use crate::item::{ITEM_MAXS, ITEM_MINS, WEAP_INVENTORY_PRIMARY};
 use crate::{ClientId, ClientLifecycle, EntityRef};
@@ -16,6 +16,7 @@ pub enum DebugSpawnRejectReason {
     SurfaceTooSteep,
     Blocked,
     UnsupportedWeapon,
+    UnsupportedModel,
     CapacityExhausted,
 }
 
@@ -29,6 +30,7 @@ impl DebugSpawnRejectReason {
             Self::SurfaceTooSteep => "the selected surface is too steep",
             Self::Blocked => "the selected point is blocked",
             Self::UnsupportedWeapon => "weapon cannot be a world pickup",
+            Self::UnsupportedModel => "model is unavailable for a lightweight NPC",
             Self::CapacityExhausted => "world entity capacity is exhausted",
         }
     }
@@ -42,7 +44,8 @@ impl DebugSpawnRejectReason {
             Self::SurfaceTooSteep => 4,
             Self::Blocked => 5,
             Self::UnsupportedWeapon => 6,
-            Self::CapacityExhausted => 7,
+            Self::UnsupportedModel => 7,
+            Self::CapacityExhausted => 8,
         }
     }
 
@@ -55,7 +58,8 @@ impl DebugSpawnRejectReason {
             4 => Self::SurfaceTooSteep,
             5 => Self::Blocked,
             6 => Self::UnsupportedWeapon,
-            7 => Self::CapacityExhausted,
+            7 => Self::UnsupportedModel,
+            8 => Self::CapacityExhausted,
             _ => return None,
         })
     }
@@ -147,5 +151,24 @@ pub(crate) fn spawn_weapon(
         stock,
     )
     .ok_or(DebugSpawnRejectReason::CapacityExhausted)?;
+    Ok((entity, placement))
+}
+
+pub(crate) fn spawn_npc_target(
+    world: &mut FrameWorld,
+    requester: ClientId,
+    model: [u8; crate::NPC_MODEL_BYTES],
+) -> Result<(EntityRef, DebugSpawnPlacement), DebugSpawnRejectReason> {
+    let placement = resolve_placement(world, requester, PLAYER_MINS, PLAYER_MAXS)?;
+    let entity = crate::npc::spawn_target(world, model, placement.origin, placement.yaw).map_err(
+        |error| match error {
+            crate::NpcSpawnError::InvalidModel | crate::NpcSpawnError::ModelUnavailable => {
+                DebugSpawnRejectReason::UnsupportedModel
+            }
+            crate::NpcSpawnError::CapacityExhausted | crate::NpcSpawnError::NoEntity => {
+                DebugSpawnRejectReason::CapacityExhausted
+            }
+        },
+    )?;
     Ok((entity, placement))
 }

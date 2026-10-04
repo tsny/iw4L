@@ -153,6 +153,7 @@ pub(crate) fn restart_level(world: &mut World, tick: crate::Tick) {
             frame.remove_dropped_item_by_number(number);
         }
         crate::inventory::world_items::clear(&mut frame);
+        crate::npc::clear(&mut frame);
         crate::t5_destructible::restart(&mut frame);
         frame.restart_level_phase();
         for id in frame.client_ids_sorted() {

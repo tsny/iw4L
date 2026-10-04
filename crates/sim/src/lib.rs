@@ -26,6 +26,7 @@ pub mod match_state;
 mod missile;
 mod missile_guidance;
 pub use missile_guidance::{MissileGuide, MissileTarget};
+mod npc;
 mod persistent_data;
 mod persistent_defaults;
 pub use persistent_data::{
@@ -104,8 +105,9 @@ pub use identities::{
 };
 pub use input::{
     ActionRequestId, ClassId, ClientAction, DebugSpawnRecipe, InventoryTransaction,
-    InventoryTransferAmount, LOOT_KEY_BYTES, MENU_RESPONSE_BYTES, SpawnPick, TickInput,
-    action_request_id, loot_key_field, loot_key_text, menu_response_field, menu_response_text,
+    InventoryTransferAmount, LOOT_KEY_BYTES, MENU_RESPONSE_BYTES, NPC_MODEL_BYTES, SpawnPick,
+    TickInput, action_request_id, loot_key_field, loot_key_text, menu_response_field,
+    menu_response_text, npc_model_field, npc_model_text,
 };
 pub use inventory::{
     BACKPACK_HEIGHT, BACKPACK_WIDTH, InventoryGrantRejectReason, InventoryNotice, InventorySummary,
@@ -125,6 +127,7 @@ pub use match_state::{
     TargetBoxDvar, UNRELIABLE_SIM_EVENT_COUNT, ViewEffects, VisionChange, is_postfx_dvar,
     sim_event_is_reliable,
 };
+pub use npc::{MAX_NPC_ACTORS, NPC_TARGET_HEALTH, NpcActor, NpcActors, NpcSpawnError};
 pub use player_anim_script::{
     AnimConditions, AnimScriptCommand, AnimScriptCondition, AnimScriptItem, PlayerAnimScript,
     anim_conditions_from_pmove, pmove_anim_weapon_ids,

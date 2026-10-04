@@ -737,6 +737,10 @@ fn encode_debug_spawn_recipe(out: &mut WireWriter, recipe: sim::DebugSpawnRecipe
             out.put_u8(0);
             out.put_u32(weapon);
         }
+        sim::DebugSpawnRecipe::NpcTarget { model } => {
+            out.put_u8(1);
+            out.put_bytes(&model);
+        }
     }
 }
 
@@ -747,6 +751,14 @@ fn decode_debug_spawn_recipe(
         0 => Ok(sim::DebugSpawnRecipe::Weapon {
             weapon: input.get_u32()?,
         }),
+        1 => {
+            let mut model = [0; sim::NPC_MODEL_BYTES];
+            input.get_bytes(&mut model)?;
+            if sim::npc_model_text(&model).is_none() {
+                return Err(WireError::Malformed("invalid npc model name"));
+            }
+            Ok(sim::DebugSpawnRecipe::NpcTarget { model })
+        }
         _ => Err(WireError::Malformed("unknown debug spawn recipe tag")),
     }
 }
@@ -1010,6 +1022,7 @@ pub fn encode_snapshot_meta_sections(
     encode_item_ammo(out, &meta.item_ammo);
     encode_item_pickups(out, &meta.item_pickups);
     encode_world_items(out, &meta.world_items);
+    encode_npc_actors(out, &meta.npc_actors);
     sizes.item_tables = section_span(out, mark);
     mark = out.len();
     encode_area_entities(out, meta.area_entities.as_ref());
@@ -1084,6 +1097,7 @@ pub fn decode_snapshot_meta(
     let item_ammo = decode_item_ammo(input)?;
     let item_pickups = decode_item_pickups(input)?;
     let world_items = decode_world_items(input)?;
+    let npc_actors = decode_npc_actors(input)?;
     let area_entities = decode_area_entities(input)?;
     let objectives = decode_objectives(input)?;
     let wire_len = input.get_u16()? as usize;
@@ -1119,6 +1133,7 @@ pub fn decode_snapshot_meta(
             item_ammo,
             item_pickups,
             world_items,
+            npc_actors,
         },
         inventory_wire,
         wire,
@@ -3211,6 +3226,65 @@ fn decode_world_items(input: &mut WireReader<'_>) -> Result<sim::WorldItems, Wir
         });
     }
     Ok(sim::WorldItems { next_serial, items })
+}
+
+fn encode_npc_actors(out: &mut WireWriter, actors: &sim::NpcActors) {
+    debug_assert!(actors.actors.len() <= sim::MAX_NPC_ACTORS);
+    out.put_u32(actors.next_serial);
+    out.put_u16(actors.actors.len() as u16);
+    for actor in &actors.actors {
+        out.put_u32(actor.presence.to_wire());
+        out.put_bytes(&actor.model);
+        for axis in actor.origin {
+            out.put_f32(axis);
+        }
+        out.put_f32(actor.yaw);
+        out.put_i32(actor.health);
+        out.put_i32(actor.max_health);
+    }
+}
+
+fn decode_npc_actors(input: &mut WireReader<'_>) -> Result<sim::NpcActors, WireError> {
+    let next_serial = input.get_u32()?;
+    let count = usize::from(input.get_u16()?);
+    if count > sim::MAX_NPC_ACTORS {
+        return Err(WireError::Malformed("npc actor count exceeds limit"));
+    }
+    let mut actors = Vec::with_capacity(count);
+    for _ in 0..count {
+        let presence = sim::ScriptModelId::from_wire(input.get_u32()?);
+        let mut model = [0; sim::NPC_MODEL_BYTES];
+        input.get_bytes(&mut model)?;
+        if sim::npc_model_text(&model).is_none() {
+            return Err(WireError::Malformed("invalid npc model name"));
+        }
+        let origin = [input.get_f32()?, input.get_f32()?, input.get_f32()?];
+        let yaw = input.get_f32()?;
+        let health = input.get_i32()?;
+        let max_health = input.get_i32()?;
+        if !origin.iter().chain([&yaw]).all(|value| value.is_finite())
+            || max_health <= 0
+            || !(1..=max_health).contains(&health)
+        {
+            return Err(WireError::Malformed("invalid npc actor state"));
+        }
+        actors.push(sim::NpcActor {
+            presence,
+            model,
+            origin,
+            yaw,
+            health,
+            max_health,
+        });
+    }
+    let actors = sim::NpcActors {
+        next_serial,
+        actors,
+    };
+    if !actors.validate() {
+        return Err(WireError::Malformed("invalid npc actor registry"));
+    }
+    Ok(actors)
 }
 
 fn encode_entity_dobjs(

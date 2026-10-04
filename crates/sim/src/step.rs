@@ -987,6 +987,9 @@ fn apply_debug_spawn(
             crate::DebugSpawnRecipe::Weapon { weapon } => {
                 crate::debug_spawn::spawn_weapon(world, id, weapon)
             }
+            crate::DebugSpawnRecipe::NpcTarget { model } => {
+                crate::debug_spawn::spawn_npc_target(world, id, model)
+            }
         }
     };
     match result {

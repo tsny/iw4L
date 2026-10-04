@@ -154,6 +154,29 @@ fn apply_entity_blast(world: &mut FrameWorld, blast: &ExplosionBlast) {
     if blast.radius <= 0.0 {
         return;
     }
+    let npc_hits: Vec<_> = world
+        .npc_actors()
+        .actors
+        .iter()
+        .filter_map(|actor| {
+            let mid = [actor.origin[0], actor.origin[1], actor.origin[2] + 35.0];
+            if !blast.contains(mid) {
+                return None;
+            }
+            let dist = radius_damage_distance_to_aabb(blast.origin, mid, [15.0, 15.0, 35.0]);
+            let amount = radius_damage_amount(
+                blast.inner_damage,
+                blast.outer_damage,
+                blast.radius,
+                dist,
+                1.0,
+            );
+            (amount > 0).then_some((actor.presence, amount))
+        })
+        .collect();
+    for (target, amount) in npc_hits {
+        crate::npc::apply_damage(world, target, amount, Some(blast.attacker));
+    }
     let means = crate::script_player::means(world, blast.source, blast.weapon, 0, true);
     for (target, mid, dist) in
         crate::script::radius_targets(world.ecs(), blast.origin, blast.radius)

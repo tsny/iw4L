@@ -649,6 +649,8 @@ pub struct SimState {
 
     world_items: crate::WorldItems,
 
+    npc_actors: crate::NpcActors,
+
     publish_snapshot: bool,
 }
 
@@ -733,6 +735,7 @@ impl Default for SimState {
             use_start_spawns: gamemode_iw4::USE_START_SPAWNS_AT_START,
             item_pickups: Vec::new(),
             world_items: crate::WorldItems::default(),
+            npc_actors: crate::NpcActors::default(),
             publish_snapshot: true,
         };
         world.recompute_content_digest();
@@ -3019,6 +3022,14 @@ impl SimState {
         &mut self.world_items
     }
 
+    pub fn npc_actors(&self) -> &crate::NpcActors {
+        &self.npc_actors
+    }
+
+    pub(crate) fn npc_actors_mut(&mut self) -> &mut crate::NpcActors {
+        &mut self.npc_actors
+    }
+
     pub(crate) fn client_meta_mut(&mut self, id: ClientId) -> &mut ClientMatchState {
         if let Some(idx) = self.clients.iter().position(|(c, _)| *c == id) {
             let row = &mut self.clients[idx].1;
@@ -3155,6 +3166,7 @@ impl SimState {
                 item_ammo,
                 item_pickups: self.item_pickups.clone(),
                 world_items: self.world_items.clone(),
+                npc_actors: self.npc_actors.clone(),
             },
         }
     }
@@ -3341,6 +3353,8 @@ impl SimState {
         self.corpses = snapshot.meta.corpses;
         self.world_items = snapshot.meta.world_items.clone();
         crate::inventory::world_items::restore_owners(self);
+        self.npc_actors = snapshot.meta.npc_actors.clone();
+        crate::npc::restore_owners(self);
 
         self.old_buttons.clear();
         self.old_cmd_angles.clear();

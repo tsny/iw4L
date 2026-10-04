@@ -1406,6 +1406,11 @@ pub(crate) fn phase_trace(
                     ColliderId::EntityDObjBone { owner, .. }
                     | ColliderId::EntityLinkedBrush { owner, .. },
                 ) => {
+                    if let Some(target) = owner.script_model()
+                        && crate::npc::apply_damage(world, target, scaled, Some(em.attacker))
+                    {
+                        continue;
+                    }
                     if let Some(ColliderId::EntityDObjBone { bone, .. }) = segment.collider
                         && crate::t5_destructible::apply_hit(
                             world,
@@ -1576,6 +1581,15 @@ fn fire_weapon_melee(
         Some(ColliderId::Player { client, .. }) => {
             (entity_iw4::EntityEventKind::MELEE_HIT, client.0 as i32)
         }
+        Some(
+            ColliderId::EntityDObjBone { owner, .. } | ColliderId::EntityLinkedBrush { owner, .. },
+        ) => (
+            entity_iw4::EntityEventKind::MELEE_HIT,
+            owner
+                .script_model()
+                .and_then(|id| world.gentity_number(id))
+                .unwrap_or(playerstate_iw4::ENTITYNUM_NONE),
+        ),
         _ => (
             entity_iw4::EntityEventKind::MELEE_MISS,
             i32::from(trace_iw4::ENTITYNUM_WORLD),
@@ -1638,6 +1652,13 @@ fn fire_weapon_melee(
                         ..Default::default()
                     },
                 );
+            }
+        }
+        Some(
+            ColliderId::EntityDObjBone { owner, .. } | ColliderId::EntityLinkedBrush { owner, .. },
+        ) => {
+            if let Some(target) = owner.script_model() {
+                crate::npc::apply_damage(world, target, amount, Some(attacker));
             }
         }
         Some(ColliderId::World { .. }) => {

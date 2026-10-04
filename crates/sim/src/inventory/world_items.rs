@@ -195,7 +195,9 @@ pub(crate) fn restore_owners(world: &mut SimState) {
         .entity_collision_capabilities()
         .iter()
         .filter_map(|row| row.owner.script_model())
-        .filter(|id| id.to_wire() >= WORLD_ITEM_PRESENCE_BASE)
+        .filter(|id| {
+            (WORLD_ITEM_PRESENCE_BASE..crate::npc::NPC_PRESENCE_BASE).contains(&id.to_wire())
+        })
         .filter(|id| !rows.iter().any(|row| row.presence == *id))
         .collect();
     for id in stale {

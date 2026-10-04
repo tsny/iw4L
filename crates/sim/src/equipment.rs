@@ -1354,6 +1354,9 @@ pub(crate) fn think_projectile(world: &mut FrameWorld, tick: Tick, entnum: i32) 
             let _ = crate::damage::apply_damage_attempt(world, tick, &intent);
         }
         for (source, mut hit) in std::mem::take(&mut entity_hits) {
+            if crate::npc::apply_damage(world, hit.target, hit.amount, hit.attacker) {
+                continue;
+            }
             hit.means = crate::script_player::means(world, source, hit.weapon, 0, false);
             crate::script::damage_entity(world.ecs(), &hit);
         }

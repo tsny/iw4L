@@ -9,6 +9,25 @@ pub struct ClassId(pub u32);
 pub type ActionRequestId = u32;
 
 pub const LOOT_KEY_BYTES: usize = inventory::MAX_ITEM_KEY_BYTES;
+pub const NPC_MODEL_BYTES: usize = 96;
+
+pub fn npc_model_field(value: &str) -> Option<[u8; NPC_MODEL_BYTES]> {
+    let bytes = value.as_bytes();
+    if bytes.is_empty() || bytes.len() >= NPC_MODEL_BYTES || bytes.contains(&0) {
+        return None;
+    }
+    let mut field = [0; NPC_MODEL_BYTES];
+    field[..bytes.len()].copy_from_slice(bytes);
+    Some(field)
+}
+
+pub fn npc_model_text(field: &[u8; NPC_MODEL_BYTES]) -> Option<&str> {
+    let end = field.iter().position(|byte| *byte == 0)?;
+    if end == 0 || field[end..].iter().any(|byte| *byte != 0) {
+        return None;
+    }
+    core::str::from_utf8(&field[..end]).ok()
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InventoryTransferAmount {
@@ -57,6 +76,7 @@ pub enum InventoryTransaction {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DebugSpawnRecipe {
     Weapon { weapon: u32 },
+    NpcTarget { model: [u8; NPC_MODEL_BYTES] },
 }
 
 impl InventoryTransaction {
