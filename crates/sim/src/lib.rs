@@ -110,7 +110,8 @@ pub use input::{
 pub use inventory::{
     BACKPACK_HEIGHT, BACKPACK_WIDTH, InventoryGrantRejectReason, InventoryNotice, InventorySummary,
     InventoryTransactionKind, InventoryTransactionReceipt, InventoryTransactionRejectReason,
-    PlayerInventory, loot_catalog,
+    MAX_WORLD_ITEMS, PlayerInventory, WorldItem, WorldItemDropRejectReason, WorldItems,
+    loot_catalog,
 };
 pub use mantle_xanim::MantleXAnimBind;
 pub use match_state::{

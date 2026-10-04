@@ -47,6 +47,11 @@ pub enum InventoryTransaction {
         amount: InventoryTransferAmount,
         target: inventory::PlacementTarget,
     },
+    Drop {
+        container: inventory::ContainerId,
+        expected_revision: u32,
+        instance: inventory::ItemInstanceId,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -61,6 +66,7 @@ impl InventoryTransaction {
             Self::Split { .. } => crate::InventoryTransactionKind::Split,
             Self::Merge { .. } => crate::InventoryTransactionKind::Merge,
             Self::Transfer { .. } => crate::InventoryTransactionKind::Transfer,
+            Self::Drop { .. } => crate::InventoryTransactionKind::Drop,
         }
     }
 }

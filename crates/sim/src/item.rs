@@ -721,6 +721,7 @@ struct UseItem {
     number: i32,
     weapon: u32,
     projectile: bool,
+    loot: Option<crate::ScriptModelId>,
 }
 
 fn projectile_pickup_ammo(
@@ -857,6 +858,7 @@ fn selected_item(world: &FrameWorld, walker: ClientId, ps: &PlayerState) -> Opti
                     number: item.state.number,
                     weapon: item.state.index as u32,
                     projectile: false,
+                    loot: None,
                 },
             ));
         }
@@ -894,11 +896,103 @@ fn selected_item(world: &FrameWorld, walker: ClientId, ps: &PlayerState) -> Opti
                     number: projectile.entnum,
                     weapon: projectile.weapon,
                     projectile: true,
+                    loot: None,
                 },
             ));
         }
     });
+    for row in &world.world_items().items {
+        let Some(number) = world.gentity_number(row.presence) else {
+            continue;
+        };
+        let center = [row.origin[0], row.origin[1], row.origin[2] + 4.0];
+        let delta: [f32; 3] = core::array::from_fn(|i| center[i] - eye[i]);
+        let distance = delta.iter().map(|v| v * v).sum::<f32>().sqrt();
+        if distance > 128.0
+            || world
+                .trace_world(eye, center, [0.0; 3], [0.0; 3], 0x11)
+                .fraction
+                < 1.0
+        {
+            continue;
+        }
+        let dot = if distance > 0.0 {
+            (0..3).map(|i| forward[i] * delta[i] / distance).sum()
+        } else {
+            0.0
+        };
+        let score = distance + (1.0 - (dot + 1.0) * 0.5) * 256.0;
+        if best.as_ref().is_none_or(|(old, _)| score < *old) {
+            best = Some((
+                score,
+                UseItem {
+                    number,
+                    weapon: 0,
+                    projectile: false,
+                    loot: Some(row.presence),
+                },
+            ));
+        }
+    }
     best.map(|(_, item)| item)
+}
+
+/// Moves a world stack into the walker's backpack when it fits.
+fn grab_world_item(world: &mut FrameWorld, walker: ClientId, presence: crate::ScriptModelId) {
+    let Some(item) = world
+        .world_items()
+        .items
+        .iter()
+        .find(|row| row.presence == presence)
+        .map(|row| row.item.clone())
+    else {
+        return;
+    };
+    let mut inventory = world
+        .client_meta(walker)
+        .and_then(|meta| meta.inventory.clone())
+        .unwrap_or_else(|| crate::PlayerInventory::new(walker));
+    if inventory.pick_up(walker, item).is_err() {
+        return;
+    }
+    crate::inventory::world_items::remove(world, presence);
+    world.client_meta_mut(walker).inventory = Some(inventory);
+}
+
+fn world_item_hint(
+    world: &mut FrameWorld,
+    walker: ClientId,
+    presence: crate::ScriptModelId,
+) -> Option<i32> {
+    let item = world
+        .world_items()
+        .items
+        .iter()
+        .find(|row| row.presence == presence)?
+        .item
+        .clone();
+    let name = &crate::loot_catalog().definition(item.definition)?.name;
+    let fits = world
+        .client_meta(walker)
+        .and_then(|meta| meta.inventory.as_ref())
+        .map_or_else(
+            || crate::PlayerInventory::new(walker).can_pick_up(walker, &item),
+            |inventory| inventory.can_pick_up(walker, &item),
+        );
+    let count = if item.quantity > 1 {
+        format!(" x{}", item.quantity)
+    } else {
+        String::new()
+    };
+    let text = if fits {
+        format!(
+            "{}Press &&1 to pick up {name}{count}",
+            crate::HUD_STRING_PLAIN
+        )
+    } else {
+        format!("{}Backpack full: {name}{count}", crate::HUD_STRING_PLAIN)
+    };
+    world.hud_string_index(&text)
 }
 
 pub(crate) fn phase_use_items(
@@ -938,6 +1032,8 @@ pub(crate) fn phase_use_items(
             let item = selected.expect("selected use item");
             if item.projectile {
                 grab_projectile(world, id, item.number, tick);
+            } else if let Some(presence) = item.loot {
+                grab_world_item(world, id, presence);
             } else {
                 grab_number(world, id, item.number);
             }
@@ -948,16 +1044,24 @@ pub(crate) fn phase_use_items(
             id,
             &world.player(id).copied().expect("client exists"),
         );
+        let loot_hint = selected
+            .and_then(|item| item.loot)
+            .map(|presence| world_item_hint(world, id, presence));
         let dual = selected.is_some_and(|item| {
-            world
-                .combat_facts_for(item.weapon)
-                .is_some_and(|facts| facts.dual_wield)
-                || gsc_give_weapon_is_akimbo(world.weapon_script_name(item.weapon))
+            item.loot.is_none()
+                && (world
+                    .combat_facts_for(item.weapon)
+                    .is_some_and(|facts| facts.dual_wield)
+                    || gsc_give_weapon_is_akimbo(world.weapon_script_name(item.weapon)))
         });
         if let Some(ps) = world.player_mut(id) {
-            ps.cursor_hint = selected.map_or(0, |item| item.weapon as i32 + 4);
+            ps.cursor_hint = match (selected, loot_hint) {
+                (_, Some(Some(_))) => 1,
+                (_, Some(None)) | (None, _) => 0,
+                (Some(item), None) => item.weapon as i32 + 4,
+            };
             ps.cursor_hint_ent_index = selected.map_or(ENTITYNUM_NONE, |item| item.number);
-            ps.cursor_hint_string = -1;
+            ps.cursor_hint_string = loot_hint.flatten().unwrap_or(-1);
             ps.cursor_hint_dual_wield = i32::from(dual);
         }
     }

@@ -135,6 +135,8 @@ pub struct SnapshotMeta {
     pub item_ammo: Vec<DroppedItemAmmo>,
 
     pub item_pickups: Vec<ItemPickupRecord>,
+
+    pub world_items: crate::WorldItems,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

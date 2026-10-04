@@ -7,6 +7,10 @@ use ::inventory::{
 
 use crate::{ActionRequestId, ClientId};
 
+pub(crate) mod world_items;
+
+pub use world_items::{MAX_WORLD_ITEMS, WorldItem, WorldItemDropRejectReason, WorldItems};
+
 const BASE_ITEMS: &str = include_str!("../../../../content/loot/base/items.json");
 
 pub const BACKPACK_WIDTH: u8 = 8;
@@ -37,6 +41,7 @@ pub enum InventoryTransactionKind {
     Split,
     Merge,
     Transfer,
+    Drop,
 }
 
 impl InventoryTransactionKind {
@@ -46,6 +51,7 @@ impl InventoryTransactionKind {
             Self::Split => 1,
             Self::Merge => 2,
             Self::Transfer => 3,
+            Self::Drop => 4,
         }
     }
 
@@ -55,6 +61,7 @@ impl InventoryTransactionKind {
             1 => Self::Split,
             2 => Self::Merge,
             3 => Self::Transfer,
+            4 => Self::Drop,
             _ => return None,
         })
     }
@@ -76,6 +83,8 @@ pub enum InventoryTransactionRejectReason {
     SameContainer,
     InvalidState,
     InstanceIdsExhausted,
+    NoWorldModel,
+    WorldItemsFull,
 }
 
 impl InventoryTransactionRejectReason {
@@ -95,6 +104,8 @@ impl InventoryTransactionRejectReason {
             Self::SameContainer => "cross-container transfer requires distinct containers",
             Self::InvalidState => "inventory state is invalid",
             Self::InstanceIdsExhausted => "item instance IDs are exhausted",
+            Self::NoWorldModel => "item has no world model on this map",
+            Self::WorldItemsFull => "too many items are on the ground",
         }
     }
 
@@ -114,6 +125,8 @@ impl InventoryTransactionRejectReason {
             Self::SameContainer => 11,
             Self::InvalidState => 12,
             Self::InstanceIdsExhausted => 13,
+            Self::NoWorldModel => 14,
+            Self::WorldItemsFull => 15,
         }
     }
 
@@ -133,6 +146,8 @@ impl InventoryTransactionRejectReason {
             11 => Self::SameContainer,
             12 => Self::InvalidState,
             13 => Self::InstanceIdsExhausted,
+            14 => Self::NoWorldModel,
+            15 => Self::WorldItemsFull,
             _ => return None,
         })
     }
@@ -450,6 +465,9 @@ impl PlayerInventory {
                     destination_revision: None,
                 }
             }
+            crate::InventoryTransaction::Drop { .. } => {
+                return Err(InventoryTransactionRejectReason::InvalidState);
+            }
             crate::InventoryTransaction::Transfer {
                 source,
                 destination,
@@ -464,6 +482,93 @@ impl PlayerInventory {
             .map_err(|_| InventoryTransactionRejectReason::InvalidState)?;
         *self = next;
         Ok(receipt)
+    }
+
+    /// Removes a stack for dropping and returns it with the new revision.
+    pub(crate) fn take(
+        &mut self,
+        container: ContainerId,
+        expected_revision: u32,
+        instance: ItemInstanceId,
+    ) -> Result<ItemInstance, InventoryTransactionRejectReason> {
+        self.expect_backpack(container)?;
+        self.backpack
+            .expect_revision(expected_revision)
+            .map_err(InventoryTransactionRejectReason::from_grid)?;
+        self.backpack
+            .remove(instance)
+            .map_err(InventoryTransactionRejectReason::from_grid)
+    }
+
+    /// Whether `item` fits by topping up stacks and then taking free cells.
+    pub(crate) fn can_pick_up(&self, owner: ClientId, item: &ItemInstance) -> bool {
+        self.clone().pick_up(owner, item.clone()).is_ok()
+    }
+
+    /// Adds a world stack, keeping its instance ID for any part not merged.
+    pub(crate) fn pick_up(
+        &mut self,
+        owner: ClientId,
+        item: ItemInstance,
+    ) -> Result<InventoryNotice, InventoryGrantRejectReason> {
+        self.check_owner(owner)?;
+        let catalog = loot_catalog();
+        let definition_row = catalog
+            .definition(item.definition)
+            .ok_or(InventoryGrantRejectReason::UnknownItem)?;
+        let mut next = self.clone();
+        let mut remaining = item.quantity;
+        let stack_ids: Vec<_> = next
+            .backpack
+            .items()
+            .iter()
+            .filter(|have| have.definition == item.definition && have.condition == item.condition)
+            .map(|have| have.id)
+            .collect();
+        for instance in stack_ids {
+            let current = next
+                .backpack
+                .item(instance)
+                .ok_or(InventoryGrantRejectReason::InvalidState)?
+                .quantity;
+            let added = remaining.min(definition_row.max_stack.saturating_sub(current));
+            if added == 0 {
+                continue;
+            }
+            next.backpack
+                .increase_stack(instance, next.backpack.revision(), added, catalog)
+                .map_err(|_| InventoryGrantRejectReason::InvalidState)?;
+            remaining -= added;
+            if remaining == 0 {
+                break;
+            }
+        }
+        if remaining != 0 {
+            next.backpack
+                .insert_first_fit(
+                    ItemInstance {
+                        quantity: remaining,
+                        ..item.clone()
+                    },
+                    catalog,
+                )
+                .map_err(|error| match error {
+                    GridError::NoPlacement | GridError::TooManyItems(_) => {
+                        InventoryGrantRejectReason::NoSpace
+                    }
+                    _ => InventoryGrantRejectReason::InvalidState,
+                })?;
+        }
+        let notice = InventoryNotice {
+            request_id: 0,
+            definition: item.definition,
+            quantity: item.quantity,
+            revision: next.backpack.revision(),
+        };
+        next.latest_notice = Some(notice);
+        next.check_owner(owner)?;
+        *self = next;
+        Ok(notice)
     }
 
     pub fn check_owner(&self, owner: ClientId) -> Result<(), InventoryGrantRejectReason> {

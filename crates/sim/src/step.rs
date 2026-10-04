@@ -1025,6 +1025,13 @@ fn apply_inventory_transaction(
         .is_some_and(|meta| meta.lifecycle == ClientLifecycle::Alive)
     {
         Err(crate::InventoryTransactionRejectReason::NotAlive)
+    } else if let crate::InventoryTransaction::Drop {
+        container,
+        expected_revision,
+        instance,
+    } = transaction
+    {
+        drop_inventory_item(world, id, container, expected_revision, instance)
     } else {
         let meta = world.client_meta_mut(id);
         let inventory = meta
@@ -1054,6 +1061,39 @@ fn apply_inventory_transaction(
             },
         ),
     }
+}
+
+/// Moves a backpack stack onto the floor. Nothing changes unless both the
+/// removal and the world spawn succeed.
+fn drop_inventory_item(
+    world: &mut FrameWorld,
+    id: ClientId,
+    container: inventory::ContainerId,
+    expected_revision: u32,
+    instance: inventory::ItemInstanceId,
+) -> Result<crate::InventoryTransactionReceipt, crate::InventoryTransactionRejectReason> {
+    use crate::InventoryTransactionRejectReason as Reject;
+
+    let mut inventory = world
+        .client_meta(id)
+        .and_then(|meta| meta.inventory.clone())
+        .unwrap_or_else(|| crate::PlayerInventory::new(id));
+    let item = inventory.take(container, expected_revision, instance)?;
+    crate::inventory::world_items::check_drop(world, &item).map_err(|reason| match reason {
+        crate::WorldItemDropRejectReason::NoWorldModel => Reject::NoWorldModel,
+        crate::WorldItemDropRejectReason::CapacityExhausted
+        | crate::WorldItemDropRejectReason::NoEntity => Reject::WorldItemsFull,
+    })?;
+    crate::inventory::world_items::drop_in_front(world, id, item)
+        .map_err(|_| Reject::WorldItemsFull)?;
+    let revision = inventory.backpack().revision();
+    world.client_meta_mut(id).inventory = Some(inventory);
+    Ok(crate::InventoryTransactionReceipt {
+        kind: crate::InventoryTransactionKind::Drop,
+        instance,
+        source_revision: revision,
+        destination_revision: None,
+    })
 }
 
 fn apply_debug_grant_loot(

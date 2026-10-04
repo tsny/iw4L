@@ -828,6 +828,16 @@ fn encode_inventory_transaction(out: &mut WireWriter, transaction: sim::Inventor
             }
             encode_inventory_target(out, target);
         }
+        sim::InventoryTransaction::Drop {
+            container,
+            expected_revision,
+            instance,
+        } => {
+            out.put_u8(4);
+            out.put_u32(container.0);
+            out.put_u32(expected_revision);
+            out.put_u64(instance.0);
+        }
     }
 }
 
@@ -867,6 +877,11 @@ fn decode_inventory_transaction(
                 _ => return Err(WireError::Malformed("bad inventory transfer amount tag")),
             },
             target: decode_inventory_target(input)?,
+        },
+        4 => sim::InventoryTransaction::Drop {
+            container: sim::ContainerId(input.get_u32()?),
+            expected_revision: input.get_u32()?,
+            instance: sim::ItemInstanceId(input.get_u64()?),
         },
         _ => return Err(WireError::Malformed("unknown inventory transaction tag")),
     })
@@ -994,6 +1009,7 @@ pub fn encode_snapshot_meta_sections(
     mark = out.len();
     encode_item_ammo(out, &meta.item_ammo);
     encode_item_pickups(out, &meta.item_pickups);
+    encode_world_items(out, &meta.world_items);
     sizes.item_tables = section_span(out, mark);
     mark = out.len();
     encode_area_entities(out, meta.area_entities.as_ref());
@@ -1067,6 +1083,7 @@ pub fn decode_snapshot_meta(
     let entity_kernel = decode_entity_kernel(input)?;
     let item_ammo = decode_item_ammo(input)?;
     let item_pickups = decode_item_pickups(input)?;
+    let world_items = decode_world_items(input)?;
     let area_entities = decode_area_entities(input)?;
     let objectives = decode_objectives(input)?;
     let wire_len = input.get_u16()? as usize;
@@ -1101,6 +1118,7 @@ pub fn decode_snapshot_meta(
             corpses,
             item_ammo,
             item_pickups,
+            world_items,
         },
         inventory_wire,
         wire,
@@ -3153,6 +3171,46 @@ fn decode_item_pickups(input: &mut WireReader<'_>) -> Result<Vec<ItemPickupRecor
         });
     }
     Ok(rows)
+}
+
+fn encode_world_items(out: &mut WireWriter, items: &sim::WorldItems) {
+    debug_assert!(items.items.len() <= sim::MAX_WORLD_ITEMS);
+    out.put_u32(items.next_serial);
+    out.put_u16(items.items.len() as u16);
+    for row in &items.items {
+        out.put_u32(row.presence.to_wire());
+        out.put_u64(row.item.id.0);
+        out.put_u16(row.item.definition.0);
+        out.put_u16(row.item.quantity);
+        out.put_u16(row.item.condition);
+        for axis in row.origin {
+            out.put_f32(axis);
+        }
+        out.put_f32(row.yaw);
+    }
+}
+
+fn decode_world_items(input: &mut WireReader<'_>) -> Result<sim::WorldItems, WireError> {
+    let next_serial = input.get_u32()?;
+    let count = usize::from(input.get_u16()?);
+    if count > sim::MAX_WORLD_ITEMS {
+        return Err(WireError::Malformed("world item count exceeds limit"));
+    }
+    let mut items = Vec::with_capacity(count);
+    for _ in 0..count {
+        items.push(sim::WorldItem {
+            presence: sim::ScriptModelId::from_wire(input.get_u32()?),
+            item: sim::ItemInstance {
+                id: sim::ItemInstanceId(input.get_u64()?),
+                definition: sim::ItemDefId(input.get_u16()?),
+                quantity: input.get_u16()?,
+                condition: input.get_u16()?,
+            },
+            origin: [input.get_f32()?, input.get_f32()?, input.get_f32()?],
+            yaw: input.get_f32()?,
+        });
+    }
+    Ok(sim::WorldItems { next_serial, items })
 }
 
 fn encode_entity_dobjs(

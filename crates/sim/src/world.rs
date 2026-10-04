@@ -647,6 +647,8 @@ pub struct SimState {
 
     item_pickups: Vec<crate::ItemPickupRecord>,
 
+    world_items: crate::WorldItems,
+
     publish_snapshot: bool,
 }
 
@@ -730,6 +732,7 @@ impl Default for SimState {
             objectives: crate::ObjectiveMatch::default(),
             use_start_spawns: gamemode_iw4::USE_START_SPAWNS_AT_START,
             item_pickups: Vec::new(),
+            world_items: crate::WorldItems::default(),
             publish_snapshot: true,
         };
         world.recompute_content_digest();
@@ -3008,6 +3011,14 @@ impl SimState {
         &mut self.item_pickups
     }
 
+    pub fn world_items(&self) -> &crate::WorldItems {
+        &self.world_items
+    }
+
+    pub(crate) fn world_items_mut(&mut self) -> &mut crate::WorldItems {
+        &mut self.world_items
+    }
+
     pub(crate) fn client_meta_mut(&mut self, id: ClientId) -> &mut ClientMatchState {
         if let Some(idx) = self.clients.iter().position(|(c, _)| *c == id) {
             let row = &mut self.clients[idx].1;
@@ -3143,6 +3154,7 @@ impl SimState {
                 corpses: self.corpses,
                 item_ammo,
                 item_pickups: self.item_pickups.clone(),
+                world_items: self.world_items.clone(),
             },
         }
     }
@@ -3327,6 +3339,8 @@ impl SimState {
             .adopt_occupied(&snapshot.meta.hud_strings);
 
         self.corpses = snapshot.meta.corpses;
+        self.world_items = snapshot.meta.world_items.clone();
+        crate::inventory::world_items::restore_owners(self);
 
         self.old_buttons.clear();
         self.old_cmd_angles.clear();

@@ -44,6 +44,32 @@
       "rotatable": true,
       "max_stack": 1,
       "weight_g": 850
+    },
+    {
+      "key": "base:soda",
+      "name": "Soda",
+      "footprint": [1, 1],
+      "rotatable": false,
+      "max_stack": 6,
+      "weight_g": 355,
+      "world_model": "iw4:xmodel/food_soda_single01",
+      "use": {
+        "kind": "heal",
+        "amount": 10
+      }
+    },
+    {
+      "key": "base:chips",
+      "name": "Chips",
+      "footprint": [1, 2],
+      "rotatable": true,
+      "max_stack": 3,
+      "weight_g": 150,
+      "world_model": "iw4:xmodel/food_snacks_chips01",
+      "use": {
+        "kind": "heal",
+        "amount": 15
+      }
     }
   ]
 }

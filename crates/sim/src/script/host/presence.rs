@@ -85,7 +85,9 @@ pub(crate) fn spawn_presence(world: &mut World, origin: [f32; 3]) -> Result<Scri
     let serial = runtime.next_spawned_presence;
     runtime.next_spawned_presence = serial
         .checked_add(1)
-        .filter(|n| *n < SPAWNED_PRESENCE_BASE)
+        .filter(|n| {
+            SPAWNED_PRESENCE_BASE + *n < crate::inventory::world_items::WORLD_ITEM_PRESENCE_BASE
+        })
         .ok_or("spawned script model identifiers exhausted")?;
     let id = ScriptModelId::from_wire(SPAWNED_PRESENCE_BASE + serial);
     let mut frame = FrameWorld::from_world(world);
