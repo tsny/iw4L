@@ -9,6 +9,7 @@ pub mod combat;
 pub mod content;
 mod corpse;
 mod damage;
+mod debug_spawn;
 mod entity_run;
 mod equipment;
 mod frame;
@@ -79,6 +80,7 @@ pub use combat::{
 pub use content::{CONTENT_DIGEST_SCHEME, ContentComponents, content_components, content_digest};
 pub use corpse::{PlayerCorpsePool, PlayerCorpseSlot, level_time_ms};
 pub use damage::{DamageAttempt, DamageOutcome, DamageRefusal, DeathCommit};
+pub use debug_spawn::{DEBUG_SPAWN_MAX_DISTANCE, DebugSpawnPlacement, DebugSpawnRejectReason};
 pub use equipment::{
     EquipmentRuntimeFacts, ProjectileHitGeometry, ProjectileImpact, ProjectileState,
     projectile_birth_ms,
@@ -101,9 +103,9 @@ pub use identities::{
     ProjectileId, RNG_DOMAIN_SCHEME, RngDomain, ScriptModelId, ShotId,
 };
 pub use input::{
-    ActionRequestId, ClassId, ClientAction, InventoryTransaction, InventoryTransferAmount,
-    LOOT_KEY_BYTES, MENU_RESPONSE_BYTES, SpawnPick, TickInput, action_request_id, loot_key_field,
-    loot_key_text, menu_response_field, menu_response_text,
+    ActionRequestId, ClassId, ClientAction, DebugSpawnRecipe, InventoryTransaction,
+    InventoryTransferAmount, LOOT_KEY_BYTES, MENU_RESPONSE_BYTES, SpawnPick, TickInput,
+    action_request_id, loot_key_field, loot_key_text, menu_response_field, menu_response_text,
 };
 pub use inventory::{
     BACKPACK_HEIGHT, BACKPACK_WIDTH, InventoryGrantRejectReason, InventoryNotice, InventorySummary,

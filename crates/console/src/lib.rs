@@ -31,6 +31,7 @@ mod local_profile;
 mod loot_dispatch;
 pub mod plugin;
 pub mod registry;
+mod spawn_dispatch;
 mod startup;
 pub mod suggest;
 mod synthetic_input;

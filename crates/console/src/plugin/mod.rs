@@ -180,8 +180,12 @@ impl Plugin for ConsolePlugin {
                         .chain(),
                     (
                         (
-                            crate::weapon_dispatch::echo_give_results,
-                            crate::weapon_dispatch::echo_configuration_change_results,
+                            crate::spawn_dispatch::route,
+                            (
+                                crate::weapon_dispatch::echo_give_results,
+                                crate::weapon_dispatch::echo_configuration_change_results,
+                            )
+                                .chain(),
                         )
                             .chain(),
                         (
@@ -733,13 +737,7 @@ fn setup_console(
         crate::CommandSpec::new("mark")
             .usage("mark <label> — log a monotonic engine timestamp for external timing"),
     );
-    if registry.resolve("spawn").is_none() {
-        registry.register(
-            crate::CommandSpec::new("spawn")
-                .usage("spawn [name|index] — Equip the selected class and enter the match")
-                .arg(crate::StaticCompleter::new(presets)),
-        );
-    }
+    crate::spawn_dispatch::register(&mut registry, presets, &weapon_completions);
     crate::weapon_dispatch::register_weapon_commands(&mut registry, &weapon_completions);
     crate::debug_move::register_debug_move_commands(&mut registry);
     crate::loot_dispatch::register(&mut registry);

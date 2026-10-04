@@ -80,6 +80,9 @@ pub(crate) fn route_class_commands(
             }
 
             "spawn" => {
+                if crate::spawn_dispatch::is_world_spawn(cmd) {
+                    continue;
+                }
                 if let Some(arg) = cmd.args.first()
                     && class_index_by_name(&store, arg).is_none()
                 {

@@ -966,7 +966,49 @@ fn apply_actions(world: &mut FrameWorld, tick: Tick, actions: &[(ClientId, Clien
             } => {
                 apply_inventory_transaction(world, tick, *id, request_id, transaction);
             }
+            ClientAction::DebugSpawn { request_id, recipe } => {
+                apply_debug_spawn(world, tick, *id, request_id, recipe);
+            }
         }
+    }
+}
+
+fn apply_debug_spawn(
+    world: &mut FrameWorld,
+    tick: Tick,
+    id: ClientId,
+    request_id: crate::ActionRequestId,
+    recipe: crate::DebugSpawnRecipe,
+) {
+    let result = if !world.bootstrap_ref().allow_debug_actions {
+        Err(crate::DebugSpawnRejectReason::NotAllowed)
+    } else {
+        match recipe {
+            crate::DebugSpawnRecipe::Weapon { weapon } => {
+                crate::debug_spawn::spawn_weapon(world, id, weapon)
+            }
+        }
+    };
+    match result {
+        Ok((entity, placement)) => world.push_event(
+            tick,
+            EventAudience::Client(id),
+            SimEvent::DebugSpawnAccepted {
+                request_id,
+                recipe,
+                entity,
+                origin: placement.origin,
+            },
+        ),
+        Err(reason) => world.push_event(
+            tick,
+            EventAudience::Client(id),
+            SimEvent::DebugSpawnRejected {
+                request_id,
+                recipe,
+                reason,
+            },
+        ),
     }
 }
 

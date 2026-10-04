@@ -484,6 +484,11 @@ pub(crate) fn encode_action(out: &mut WireWriter, action: &ClientAction) {
             out.put_u32(request_id);
             encode_inventory_transaction(out, transaction);
         }
+        ClientAction::DebugSpawn { request_id, recipe } => {
+            out.put_u8(25);
+            out.put_u32(request_id);
+            encode_debug_spawn_recipe(out, recipe);
+        }
         ClientAction::ForceDeath { request_id } => {
             out.put_u8(4);
             out.put_u32(request_id);
@@ -647,6 +652,10 @@ pub(crate) fn decode_action(input: &mut WireReader<'_>) -> Result<ClientAction, 
             request_id: input.get_u32()?,
             transaction: decode_inventory_transaction(input)?,
         }),
+        25 => Ok(ClientAction::DebugSpawn {
+            request_id: input.get_u32()?,
+            recipe: decode_debug_spawn_recipe(input)?,
+        }),
         11 => {
             let request_id = input.get_u32()?;
             let mut name = [0u8; 16];
@@ -720,6 +729,26 @@ fn encode_inventory_target(out: &mut WireWriter, target: sim::PlacementTarget) {
     out.put_u8(target.x);
     out.put_u8(target.y);
     out.put_u8(u8::from(target.rotated));
+}
+
+fn encode_debug_spawn_recipe(out: &mut WireWriter, recipe: sim::DebugSpawnRecipe) {
+    match recipe {
+        sim::DebugSpawnRecipe::Weapon { weapon } => {
+            out.put_u8(0);
+            out.put_u32(weapon);
+        }
+    }
+}
+
+fn decode_debug_spawn_recipe(
+    input: &mut WireReader<'_>,
+) -> Result<sim::DebugSpawnRecipe, WireError> {
+    match input.get_u8()? {
+        0 => Ok(sim::DebugSpawnRecipe::Weapon {
+            weapon: input.get_u32()?,
+        }),
+        _ => Err(WireError::Malformed("unknown debug spawn recipe tag")),
+    }
 }
 
 fn decode_inventory_target(input: &mut WireReader<'_>) -> Result<sim::PlacementTarget, WireError> {
@@ -2336,6 +2365,31 @@ pub(crate) fn encode_event(out: &mut WireWriter, event: &SimEvent) {
             out.put_u8(kind.wire_tag());
             out.put_u8(reason.wire_tag());
         }
+        SimEvent::DebugSpawnAccepted {
+            request_id,
+            recipe,
+            entity,
+            origin,
+        } => {
+            out.put_u8(23);
+            out.put_u32(request_id);
+            encode_debug_spawn_recipe(out, recipe);
+            out.put_i32(entity.number());
+            out.put_u32(entity.generation());
+            for value in origin {
+                out.put_f32(value);
+            }
+        }
+        SimEvent::DebugSpawnRejected {
+            request_id,
+            recipe,
+            reason,
+        } => {
+            out.put_u8(24);
+            out.put_u32(request_id);
+            encode_debug_spawn_recipe(out, recipe);
+            out.put_u8(reason.wire_tag());
+        }
         SimEvent::ConfigurationChangeAccepted {
             request_id,
             from,
@@ -2470,6 +2524,28 @@ pub(crate) fn decode_event(input: &mut WireReader<'_>) -> Result<SimEvent, WireE
             reason: sim::InventoryTransactionRejectReason::from_wire_tag(input.get_u8()?).ok_or(
                 WireError::Malformed("unknown inventory transaction reject reason"),
             )?,
+        }),
+        23 => {
+            let request_id = input.get_u32()?;
+            let recipe = decode_debug_spawn_recipe(input)?;
+            let entity = sim::EntityRef::from_parts(input.get_i32()?, input.get_u32()?)
+                .map_err(|_| WireError::Malformed("invalid debug spawn entity reference"))?;
+            let origin = [input.get_f32()?, input.get_f32()?, input.get_f32()?];
+            if !origin.iter().all(|value| value.is_finite()) {
+                return Err(WireError::Malformed("non-finite debug spawn origin"));
+            }
+            Ok(SimEvent::DebugSpawnAccepted {
+                request_id,
+                recipe,
+                entity,
+                origin,
+            })
+        }
+        24 => Ok(SimEvent::DebugSpawnRejected {
+            request_id: input.get_u32()?,
+            recipe: decode_debug_spawn_recipe(input)?,
+            reason: sim::DebugSpawnRejectReason::from_wire_tag(input.get_u8()?)
+                .ok_or(WireError::Malformed("unknown debug spawn reject reason"))?,
         }),
         16 => Ok(SimEvent::ConfigurationChangeAccepted {
             request_id: input.get_u32()?,

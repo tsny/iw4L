@@ -145,6 +145,19 @@ pub enum SimEvent {
         reason: crate::InventoryTransactionRejectReason,
     },
 
+    DebugSpawnAccepted {
+        request_id: ActionRequestId,
+        recipe: crate::DebugSpawnRecipe,
+        entity: crate::EntityRef,
+        origin: [f32; 3],
+    },
+
+    DebugSpawnRejected {
+        request_id: ActionRequestId,
+        recipe: crate::DebugSpawnRecipe,
+        reason: crate::DebugSpawnRejectReason,
+    },
+
     ConfigurationChangeAccepted {
         request_id: ActionRequestId,
         from: u32,
@@ -253,6 +266,18 @@ pub const SIM_EVENT_ROSTER: &[SimEventRow] = &[
                        the client to clear its pending state",
     },
     SimEventRow {
+        variant: "DebugSpawnAccepted",
+        reliable: true,
+        control_fact: "authority resolved a debug recipe against its player pose and world \
+                       collision, then published the created entity and final origin",
+    },
+    SimEventRow {
+        variant: "DebugSpawnRejected",
+        reliable: true,
+        control_fact: "authority refused a debug spawn recipe with a typed placement or capacity \
+                       reason",
+    },
+    SimEventRow {
         variant: "ConfigurationChangeAccepted",
         reliable: true,
         control_fact: "authority accepted the held weapon's configuration transition",
@@ -313,6 +338,8 @@ pub fn sim_event_is_reliable(event: &SimEvent) -> bool {
         SimEvent::InventoryGrantRejected { .. } => "InventoryGrantRejected",
         SimEvent::InventoryTransactionAccepted { .. } => "InventoryTransactionAccepted",
         SimEvent::InventoryTransactionRejected { .. } => "InventoryTransactionRejected",
+        SimEvent::DebugSpawnAccepted { .. } => "DebugSpawnAccepted",
+        SimEvent::DebugSpawnRejected { .. } => "DebugSpawnRejected",
         SimEvent::ConfigurationChangeAccepted { .. } => "ConfigurationChangeAccepted",
         SimEvent::ConfigurationChangeRejected { .. } => "ConfigurationChangeRejected",
         SimEvent::Spawned { .. } => "Spawned",

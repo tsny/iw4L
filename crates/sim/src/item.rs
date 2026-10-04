@@ -274,6 +274,48 @@ fn push_dropped_item(
     entnum
 }
 
+pub(crate) fn spawn_stationary_weapon(
+    world: &mut FrameWorld,
+    weapon: u32,
+    origin: [f32; 3],
+    yaw: f32,
+    clip_r: i32,
+    clip_l: i32,
+    stock: i32,
+) -> Option<crate::EntityRef> {
+    let pos = Trajectory {
+        tr_type: TR_STATIONARY,
+        tr_time: 0,
+        tr_duration: 0,
+        tr_delta: [0.0; 3],
+        tr_base: origin,
+    };
+    let apos = Trajectory {
+        tr_type: TR_STATIONARY,
+        tr_time: 0,
+        tr_duration: 0,
+        tr_delta: [0.0; 3],
+        tr_base: [0.0, yaw, 0.0],
+    };
+    let number = push_dropped_item(
+        world,
+        weapon,
+        origin,
+        pos,
+        apos,
+        ENTITYNUM_NONE,
+        clip_r,
+        clip_l,
+        stock,
+        false,
+        false,
+    );
+    if number == ENTITYNUM_NONE {
+        return None;
+    }
+    world.entity_kernel().current_ref(number).ok()
+}
+
 fn launch_dropped_from_ps(
     world: &mut FrameWorld,
     tick: Tick,

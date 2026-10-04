@@ -49,6 +49,11 @@ pub enum InventoryTransaction {
     },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DebugSpawnRecipe {
+    Weapon { weapon: u32 },
+}
+
 impl InventoryTransaction {
     pub const fn kind(self) -> crate::InventoryTransactionKind {
         match self {
@@ -139,6 +144,11 @@ pub enum ClientAction {
     InventoryTransaction {
         request_id: ActionRequestId,
         transaction: InventoryTransaction,
+    },
+
+    DebugSpawn {
+        request_id: ActionRequestId,
+        recipe: DebugSpawnRecipe,
     },
 
     SetProfile {
@@ -272,6 +282,7 @@ pub fn action_request_id(action: &ClientAction) -> ActionRequestId {
         | ClientAction::DebugDamage { request_id, .. }
         | ClientAction::DebugGrantLoot { request_id, .. }
         | ClientAction::InventoryTransaction { request_id, .. }
+        | ClientAction::DebugSpawn { request_id, .. }
         | ClientAction::SetName { request_id, .. }
         | ClientAction::SetProfile { request_id, .. }
         | ClientAction::UseCopycat { request_id }
