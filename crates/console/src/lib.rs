@@ -30,6 +30,7 @@ mod local_account;
 mod local_profile;
 mod loot_dispatch;
 pub mod plugin;
+mod quick_match;
 pub mod registry;
 mod spawn_dispatch;
 mod startup;

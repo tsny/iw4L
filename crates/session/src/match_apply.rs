@@ -1081,6 +1081,17 @@ fn preflight_match_install(
     {
         script_dvars.push(("onlinegame".into(), "1".into()));
     }
+
+    // Matches start without the retail player wait and countdown. Host rules
+    // and IW4L_SCRIPT_DVARS override these; the match config does not.
+
+    script_dvars.retain(|(name, _)| {
+        !["scr_game_playerwaittime", "scr_game_matchstarttime"]
+            .iter()
+            .any(|zeroed| name.eq_ignore_ascii_case(zeroed))
+    });
+    script_dvars.push(("scr_game_playerwaittime".into(), "0".into()));
+    script_dvars.push(("scr_game_matchstarttime".into(), "0".into()));
     script_dvars.push(("mapname".into(), zone.to_owned()));
     script_dvars.push(("g_gametype".into(), gametype.to_owned()));
     script_dvars.push(("sv_maxclients".into(), "18".into()));
