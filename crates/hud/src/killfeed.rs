@@ -213,7 +213,6 @@ pub(crate) fn update_killfeed(
         gaps.raise(GapCause::ObituaryNoClientInfo);
     }
 
-    let miss = hud_images.miss_reason();
     let mut cmds = Vec::new();
     let mut fonts = HashMap::new();
     let font_tex_ok = if let Some(def) = font {
