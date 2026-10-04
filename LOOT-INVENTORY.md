@@ -1,6 +1,6 @@
 # Loot and grid inventory design
 
-Status: implementation in progress; world-spawn weapon foundation complete asset-free. Last updated: 2026-10-04.
+Status: implementation in progress; single-stack world items with drop and pickup landed. Last updated: 2026-10-04.
 
 This is the canonical, living source for the loot and grid-inventory work. It records the intended architecture, package boundaries, current state, and next handoff. Chats are not a source of truth. Session evidence and historical decisions belong in `context/artifacts/2026-10-04-loot-inventory/`; this file is updated when the present design or status changes.
 
@@ -248,8 +248,50 @@ Every package runs the narrowest relevant Cargo checks and records what could no
 - Not verified: a spawned weapon's model and pickup inside a retail-data match; the overlay inside a retail-data match; an accepted cross-container transfer before world containers and access grants exist; multiplayer bandwidth under populated inventories; world-model availability; map use targeting; death policy; item effects; or persistence.
 - Current blocker: live map/render acceptance needs legally obtained game data. Catalog, grid, authoring tools, simulation, codecs, and placeholder UI are not blocked.
 - Single-stack world items: `base:soda` (`food_soda_single01`) and `base:chips` (`food_snacks_chips01`), drag-off-grid and `loot_drop <item>` drops, Use pickup with a full-backpack hint, protocol 107. Quick match runs on `mp_rundown`, which loads both models. Checked with `cargo check --workspace --all-targets`, `cargo xtask loot validate` and no-deps Clippy; not yet played in a live match.
-- Next package: perform the data-backed visual/pickup acceptance for **World spawn foundation and weapon pickup** when game data is available, then extend the typed recipe to aggregate world loot containers. Do not begin persistence or turn weapons into grid-inventory instances.
+- Next package: give the four existing items world models from the prop table, then implement **Basic item effects** so eating and drinking work. The weapon-spawn visual acceptance and aggregate bags remain open behind those.
 - Owner decisions still open: inventory/death retention policy; default backpack dimensions; missing runtime presentation policy; whether rifle ammo targets the held weapon or an authored weapon family.
+
+## Working notes
+
+Facts that cost time to rediscover. Keep this section current.
+
+### World models and maps
+
+- A world model renders only if the current map loads it. The sim model library is every xmodel in the map zone plus the `common_mp` models that scripts reference. Most props are map-specific.
+- `context/artifacts/2026-10-04-loot-inventory/ff_model_names.py <zone.ff> [--models]` lists model names in a retail zone. It dechunks signed zones the same way as `asset_transport::zone::dechunk_authed`.
+- Prop candidates found so far:
+
+| Model | Use | Maps |
+|---|---|---|
+| `food_soda_single01`, `food_soda_single02` | soda can (`base:soda`) | boneyard, derail, favela, highrise, invasion, nightshift, quarry, rundown, subbase, terminal, underpass |
+| `food_snacks_chips01` | chips (`base:chips`) | most MP maps except rust |
+| `food_snacks_beefjerky01`, `_cookies01`, `_donuts01`, `_peanuts01`, `_krustbar01` | snacks | most MP maps except rust |
+| `food_soda_sixpack01` | six-pack | estate, favela, rundown, underpass |
+| `com_cellphone` | phone | most MP maps |
+| `com_red_toolbox` | tools | checkpoint, highrise, nightshift, quarry, rundown, subbase |
+| `com_plasticcase_green_rifle` | ammo/weapon case | rundown (others unchecked) |
+
+- `mp_rust` loads almost no small props. Quick match runs on `mp_rundown` for that reason.
+
+### Sim and wire
+
+- World items render through the spawned script-model path. A sim script mover plus a collision owner with a dobj is enough; the renderer draws presences in `0x4000_0000..0x8000_0000`. World items use `0x7000_0000` and up, and GSC spawns stop below that.
+- `authoritative_snapshot_hash` hashes the encoded wire frame. A new `SnapshotMeta` field needs a codec in `meta_wire.rs` and a `PROTOCOL_VERSION` bump, or hashing and peer adoption miss it.
+- Snapshot adoption restores movers but not collision owners. `world_items::restore_owners` rebuilds them; any new world object needs the same.
+- Level restart clears world items in `script/host/restart.rs`.
+- `ItemDefId` follows sorted key order, so adding an item renumbers others. Never persist raw definition IDs.
+- Pickup reuses the dropped-weapon Use selection in `item.rs`. Weapons, projectiles and world items share one score, so the nearest well-aimed target wins.
+- Hints use plain text: `HUD_STRING_PLAIN` prefix, `&&1` for the Use key, `cursor_hint = 1`.
+
+### Testing
+
+The owner runs live tests. Agents stop at `cargo check --workspace --all-targets`, `cargo xtask loot validate` and no-deps Clippy (`cargo clippy -p inventory@0.1.0 -p inventory_ui --no-deps -- -D warnings`), then hand over steps. A typical live check in quick match:
+
+```text
+loot_grant base:soda 3
+loot_drop base:soda        # or Tab and drag off the grid
+# look at the can: hint shows; Use picks it up with a toast
+```
 
 ## Session finish
 
