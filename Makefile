@@ -11,7 +11,7 @@ GOAL := $(firstword $(MAKECMDGOALS))
 ARGS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
 
 .PHONY: map export-gltf play bench bench-load-session bench-live bench-overhead bench-perf menu menu-shots scenario chaos lifecycle-all lifecycle-swap lifecycle-replace lifecycle-play-in lifecycle-demo-out lifecycle-demo-map launcher deploy logs loc clean help
-.PHONY: build-windows setup-windows release publish provision
+.PHONY: build-windows setup-windows test-windows release publish provision
 .PHONY: mr publish-check approved
 .PHONY: $(ARGS)
 
@@ -236,11 +236,27 @@ launcher:
 	@test "$(ARGS)" = windows || { echo "usage: make launcher windows"; exit 2; }
 	@PROFILE="$(PROFILE)" $(XTASK) release bundles
 
+# Optional LLVM bin dir put first on PATH for the cross build. The MSVC STL
+# needs clang 19+, newer than some distro defaults.
+WINDOWS_PATH = $(if $(WINDOWS_LLVM_BIN),export PATH="$(WINDOWS_LLVM_BIN):$$PATH";,)
+
 build-windows:
-	@PROFILE="$(PROFILE)" $(XTASK) windows build
+	@$(WINDOWS_PATH) PROFILE="$(PROFILE)" $(XTASK) windows build
 
 setup-windows:
 	@$(XTASK) windows setup
+
+# Builds iw4l.exe and copies it into a Windows folder for manual testing.
+# The exe finds MW2 through Steam and writes iw4l-artifacts/ beside itself.
+test-windows:
+	@test -n "$(WINDOWS_TEST_DIR)" || { echo "set WINDOWS_TEST_DIR in .env (e.g. /mnt/c/Users/me/iw4l-testing)"; exit 1; }
+	@say() { command -v espeak >/dev/null && espeak "$$1" 2>/dev/null; true; }; \
+		exe=$$($(WINDOWS_PATH) PROFILE="$(PROFILE)" $(XTASK) windows build | sed -n 's/^iw4l\.exe=//p'); \
+		if test -n "$$exe" && mkdir -p "$(WINDOWS_TEST_DIR)" && cp "$$exe" "$(WINDOWS_TEST_DIR)/iw4l.exe"; then \
+			echo "copied $$exe -> $(WINDOWS_TEST_DIR)/iw4l.exe"; say "Windows build ready"; \
+		else \
+			say "Windows build failed"; exit 1; \
+		fi
 
 release:
 	@test "$(firstword $(ARGS))" = prod -o "$(firstword $(ARGS))" = dev || { echo "usage: make release prod|dev"; exit 2; }
@@ -351,6 +367,7 @@ help:
 	@echo "make launcher windows  build password-protected dev + prod portable ZIPs"
 	@echo "make build-windows     local Windows bins only (PROFILE=play)"
 	@echo "make setup-windows     rustup target + cargo-xwin (once)"
+	@echo "make test-windows      build-windows, then copy iw4l.exe to WINDOWS_TEST_DIR"
 	@echo "make release prod|dev  build+pack a local release; VPS untouched"
 	@echo "make publish prod|dev  upload RELEASE= (or dist/releases/<ch>/LATEST)"
 	@echo "make deploy prod|dev   release + publish; PROFILE=play unless set"
