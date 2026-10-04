@@ -8,6 +8,8 @@ pub struct ClassId(pub u32);
 
 pub type ActionRequestId = u32;
 
+pub const LOOT_KEY_BYTES: usize = inventory::MAX_ITEM_KEY_BYTES;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ClientAction {
     JoinMatch {
@@ -78,6 +80,12 @@ pub enum ClientAction {
         amount: i32,
     },
 
+    DebugGrantLoot {
+        request_id: ActionRequestId,
+        key: [u8; LOOT_KEY_BYTES],
+        quantity: u16,
+    },
+
     SetProfile {
         request_id: ActionRequestId,
         profile: PlayerProfile,
@@ -126,6 +134,27 @@ pub struct PlayerProfile {
 }
 
 pub const MENU_RESPONSE_BYTES: usize = 48;
+
+pub fn loot_key_field(text: &str) -> Option<[u8; LOOT_KEY_BYTES]> {
+    let key = inventory::ItemKey::parse(text.to_owned()).ok()?;
+    let bytes = key.as_str().as_bytes();
+    let mut field = [0; LOOT_KEY_BYTES];
+    field[..bytes.len()].copy_from_slice(bytes);
+    Some(field)
+}
+
+pub fn loot_key_text(field: &[u8; LOOT_KEY_BYTES]) -> Option<&str> {
+    let len = field
+        .iter()
+        .position(|&byte| byte == 0)
+        .unwrap_or(field.len());
+    if field[len..].iter().any(|&byte| byte != 0) {
+        return None;
+    }
+    let text = std::str::from_utf8(&field[..len]).ok()?;
+    inventory::ItemKey::parse(text.to_owned()).ok()?;
+    Some(text)
+}
 
 pub fn menu_response_field(text: &str) -> Option<[u8; MENU_RESPONSE_BYTES]> {
     let bytes = text.as_bytes();
@@ -186,6 +215,7 @@ pub fn action_request_id(action: &ClientAction) -> ActionRequestId {
         | ClientAction::BeginScriptMoverRotateVelocity { request_id, .. }
         | ClientAction::ToggleGod { request_id }
         | ClientAction::DebugDamage { request_id, .. }
+        | ClientAction::DebugGrantLoot { request_id, .. }
         | ClientAction::SetName { request_id, .. }
         | ClientAction::SetProfile { request_id, .. }
         | ClientAction::UseCopycat { request_id }

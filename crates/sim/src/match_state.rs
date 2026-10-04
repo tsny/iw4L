@@ -92,6 +92,8 @@ pub struct ClientMatchState {
     pub loadout: Option<LoadoutSpec>,
     pub life_sequence: LifeSequence,
 
+    pub inventory: Option<crate::PlayerInventory>,
+
     pub item_use_spawn_ms: i32,
     pub item_use_entity: Option<crate::EntityRef>,
 
@@ -218,6 +220,7 @@ impl ClientMatchState {
             god_mode: self.god_mode,
             loadout: self.loadout.clone(),
             life_sequence: self.life_sequence,
+            inventory: self.inventory.clone(),
             item_use_spawn_ms: self.item_use_spawn_ms,
             item_use_entity: self.item_use_entity,
             ammo_clip: self.ammo_clip,
@@ -274,6 +277,7 @@ impl ClientMatchState {
         self.god_mode = meta.god_mode;
         self.loadout = meta.loadout.clone();
         self.life_sequence = meta.life_sequence;
+        self.inventory = meta.inventory.clone();
         self.item_use_spawn_ms = meta.item_use_spawn_ms;
         self.item_use_entity = meta.item_use_entity;
         self.ammo_clip = meta.ammo_clip;

@@ -3743,6 +3743,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "inventory_lab"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "inventory 0.1.0",
+]
+
+[[package]]
 name = "ipnet"
 version = "2.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5921,6 +5929,7 @@ dependencies = [
  "gamemode_iw4",
  "glam",
  "hud_iw4",
+ "inventory 0.1.0",
  "math_iw4",
  "movement_iw4",
  "perf",
@@ -7681,6 +7690,7 @@ dependencies = [
 name = "xtask"
 version = "0.1.0"
 dependencies = [
+ "inventory 0.1.0",
  "master_protocol",
  "serde",
  "serde_json",

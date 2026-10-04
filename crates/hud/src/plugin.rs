@@ -118,6 +118,7 @@ impl Plugin for HudPlugin {
                             update_mantle_hint,
                             crate::breath_hint::update,
                             crate::use_hint::update,
+                            crate::loot_status::update,
                             update_hud_elems,
                             update_targetmap,
                             crate::menus::update_script_menus,
@@ -144,6 +145,7 @@ impl Plugin for HudPlugin {
                     flush_mantle_hint_tess,
                     flush_breath_hint_tess,
                     flush_use_hint_tess,
+                    flush_loot_status_tess,
                     flush_hud_elems_tess,
                     flush_targetmap_tess,
                     flush_blood_tess,
@@ -338,6 +340,7 @@ fn ensure_hud_root(mut commands: Commands, existing: Query<Entity, With<HudRoot>
             spawn_mantle_hint(root);
             crate::font_overlay::spawn_overlay(root, crate::breath_hint::BreathHintRaster);
             crate::font_overlay::spawn_overlay(root, crate::use_hint::UseHintRaster);
+            crate::font_overlay::spawn_overlay(root, crate::loot_status::LootStatusRaster);
             spawn_hud_elems(root);
             spawn_targetmap(root);
             crate::menus::spawn_script_menus(root);
@@ -796,6 +799,36 @@ fn flush_use_hint_tess(
     }
     let job = std::mem::take(&mut pass.use_hint);
     if let Ok((_, mut host, mut latch)) = hint.single_mut() {
+        gpu_list::apply_tess_job(
+            job,
+            &mut host,
+            &mut latch,
+            &mut hud_images,
+            &mut images,
+            &mut frame,
+            surface.width(),
+            surface.height(),
+        );
+    }
+}
+
+fn flush_loot_status_tess(
+    surface: Res<crate::surface::Hud2dSurface>,
+    mut pass: ResMut<HudTessPass>,
+    mut hud_images: ResMut<HudImages>,
+    mut images: ResMut<Assets<Image>>,
+    mut frame: ResMut<crate::gpu_list::HudTessGpuFrame>,
+    mut status: Query<
+        (Entity, &mut Node, &mut crate::gpu_list::GpuListLatch),
+        With<crate::loot_status::LootStatusRaster>,
+    >,
+) {
+    let _body = gpu_list::TessBody::open();
+    if !surface.is_ready() {
+        return;
+    }
+    let job = std::mem::take(&mut pass.loot_status);
+    if let Ok((_, mut host, mut latch)) = status.single_mut() {
         gpu_list::apply_tess_job(
             job,
             &mut host,

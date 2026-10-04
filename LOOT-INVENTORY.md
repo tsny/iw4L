@@ -146,9 +146,13 @@ Owned paths: new `crates/inventory/`, workspace manifests, and `content/loot/bas
 
 ### Asset-free authoring tools
 
+Status: complete on 2026-10-04.
+
 Owned paths: new `crates/inventory_lab/` and `xtask/src/loot.rs`, plus minimal workspace/xtask registration. Depends only on catalog/grid core. Deliver `cargo xtask loot validate` and a maintained placeholder preview that exercises the real grid/UI components once they exist. Before UI exists, validate and print a compact catalog/layout report. Complete when a clean checkout can inspect all authored items without `IW4L_GAMES`.
 
 ### Simulation integration
+
+Status: in progress. The first visible grant/HUD seam is complete; general grid transactions remain.
 
 Owned paths: new `crates/sim/src/inventory/` plus narrow hooks in input, step, world/frame, adoption, and snapshot metadata. Depends on catalog/grid core. Deliver player containers, deterministic instance allocation, revisioned transactions, typed rejection/accept events, canonical snapshots, teardown, and replay-safe cloning. No world entities or persistence. Complete when an artifact probe demonstrates accepted, overlapping, out-of-bounds, and stale-revision moves through `sim::step` and snapshot adoption.
 
@@ -180,11 +184,11 @@ Every package runs the narrowest relevant Cargo checks and records what could no
 
 ## Current state and next handoff
 
-- Implemented: the pure `inventory` crate; strict schema-1 JSON parsing; canonical sorted IDs and digest bytes; item, instance, placement and container identities; bounded grid validation; deterministic first-fit; rotation; split/merge; atomic revision-checked cross-container transfers; weight calculation; and the four-item base pack.
-- Verified: `cargo check --workspace --all-targets`; crate-local Clippy with warnings denied; an asset-free disposable probe covering catalog reordering/digest stability, unknown-field rejection, overlap rejection, rotation, split/merge, cross-container transfer, stale revisions, out-of-bounds atomicity, invariant checks, and weight; the probe was removed after its output was recorded in the artifact.
-- Not verified: live inventory UX, world-model availability, map use targeting, multiplayer bandwidth, death policy, or persistence.
+- Implemented: the catalog/grid core and asset-free authoring tools; simulation-owned 8×6 player backpacks with per-owner deterministic instance allocation, atomic authored grants and stacking, typed accept/reject events, cloning, snapshot adoption and teardown; bounded grant/meta wire codecs with per-viewer inventory projection; `loot_grant <namespace:item> [quantity]`; and a live HUD strip showing backpack kilograms/cell occupancy plus a timed pickup toast. The loot catalog now participates in the simulation content digest and the game protocol is version 103. This is a visible vertical seam, not completion of the simulation or transport packages.
+- Verified: `cargo check --workspace --all-targets`; permanent catalog/lab checks; an asset-free `sim::step` probe covering accepted and unknown-item grants, cloning, snapshot adoption and teardown; a second probe covering stacking, atomic full-backpack rejection, private projection, snapshot/action wire round trips and typed-event reconstruction; and `make publish-check`. Warnings-denied Clippy passes for the pure inventory crate; the existing `sim`, `net`, and `hud` crates have unrelated pre-existing warnings-denied failures, so the full lint gate remains unavailable.
+- Not verified: in-game visual acceptance without retail game data; player-driven move/rotate/split/merge transactions through `sim::step`; overlap, out-of-bounds and stale-revision action rejection; the full grid overlay; world-model availability; map use targeting; multiplayer bandwidth under populated inventories; death policy; item effects; or persistence.
 - Current blocker: live map/render acceptance needs legally obtained game data. Catalog, grid, authoring tools, simulation, codecs, and placeholder UI are not blocked.
-- Next package: **Asset-free authoring tools**. Do not begin simulation integration, persistence, weapon-item bridging, or world rendering first.
+- Next package: **Finish simulation integration** with revisioned move/split/merge/transfer actions and their acceptance/rejection evidence. Reuse the grant seam; do not begin persistence, weapon-item bridging, or world rendering first.
 - Owner decisions still open: inventory/death retention policy; default backpack dimensions; initial keyboard binding; missing runtime presentation policy; whether rifle ammo targets the held weapon or an authored weapon family.
 
 ## Session finish

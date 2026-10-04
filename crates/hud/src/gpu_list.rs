@@ -184,6 +184,7 @@ pub struct HudTessPass {
     pub scorebar: TessJob,
     pub splash: TessJob,
     pub killfeed: TessJob,
+    pub loot_status: TessJob,
     pub playercard: TessJob,
     pub weaponbar: TessJob,
     pub scoreboard: TessJob,

@@ -3010,9 +3010,17 @@ impl SimState {
 
     pub(crate) fn client_meta_mut(&mut self, id: ClientId) -> &mut ClientMatchState {
         if let Some(idx) = self.clients.iter().position(|(c, _)| *c == id) {
-            return &mut self.clients[idx].1;
+            let row = &mut self.clients[idx].1;
+            if row.inventory.is_none() {
+                row.inventory = Some(crate::PlayerInventory::new(id));
+            }
+            return row;
         }
-        self.clients.push((id, ClientMatchState::default()));
+        let row = ClientMatchState {
+            inventory: Some(crate::PlayerInventory::new(id)),
+            ..ClientMatchState::default()
+        };
+        self.clients.push((id, row));
         &mut self.clients.last_mut().expect("just pushed").1
     }
 

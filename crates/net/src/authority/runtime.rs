@@ -812,6 +812,9 @@ fn sim_event_refuses(event: &sim::SimEvent, request_id: sim::ActionRequestId) ->
         | sim::SimEvent::GiveRejected {
             request_id: rid, ..
         }
+        | sim::SimEvent::InventoryGrantRejected {
+            request_id: rid, ..
+        }
         | sim::SimEvent::ConfigurationChangeRejected {
             request_id: rid, ..
         } => *rid == request_id,

@@ -28,6 +28,7 @@ mod gamepad;
 pub mod input;
 mod local_account;
 mod local_profile;
+mod loot_dispatch;
 pub mod plugin;
 pub mod registry;
 mod startup;

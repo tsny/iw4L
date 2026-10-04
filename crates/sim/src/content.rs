@@ -2,7 +2,7 @@ use crate::spawn::{AuthoredSpawnPoint, MatchBootstrap};
 use crate::world::SimBrush;
 use weapon_iw4::WeaponCombatFacts;
 
-pub const CONTENT_DIGEST_SCHEME: u64 = 17;
+pub const CONTENT_DIGEST_SCHEME: u64 = 18;
 
 #[derive(Clone, Copy)]
 struct Digest(u64);
@@ -351,6 +351,7 @@ pub fn content_digest(
     hash_weapon_admission(&mut h, runnable, transition_groups);
     hash_equipment(&mut h, equipment);
     hash_class_catalog(&mut h);
+    h.bytes(crate::loot_catalog().canonical_bytes());
     hash_spawns(&mut h, &bootstrap.spawns);
     hash_collision(&mut h, clip_brushes);
     hash_script_models(&mut h, script_models);
@@ -400,6 +401,7 @@ pub fn content_components(
 
     let mut classes = component(b'C');
     hash_class_catalog(&mut classes);
+    classes.bytes(crate::loot_catalog().canonical_bytes());
 
     ContentComponents {
         map: map.finish(),

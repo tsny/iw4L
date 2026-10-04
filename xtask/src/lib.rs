@@ -7,6 +7,7 @@ pub mod frame_budget;
 pub mod licenses;
 pub mod live;
 pub mod loc;
+pub mod loot;
 pub mod master;
 pub mod mrs;
 pub mod net_feel;

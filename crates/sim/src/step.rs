@@ -953,7 +953,66 @@ fn apply_actions(world: &mut FrameWorld, tick: Tick, actions: &[(ClientId, Clien
             } => {
                 apply_debug_damage(world, tick, *id, amount);
             }
+            ClientAction::DebugGrantLoot {
+                request_id,
+                key,
+                quantity,
+            } => {
+                apply_debug_grant_loot(world, tick, *id, request_id, &key, quantity);
+            }
         }
+    }
+}
+
+fn apply_debug_grant_loot(
+    world: &mut FrameWorld,
+    tick: Tick,
+    id: ClientId,
+    request_id: crate::ActionRequestId,
+    key: &[u8; crate::LOOT_KEY_BYTES],
+    quantity: u16,
+) {
+    let result = if !world.bootstrap_ref().allow_debug_actions {
+        Err(crate::InventoryGrantRejectReason::NotAllowed)
+    } else if !world
+        .client_meta(id)
+        .is_some_and(|meta| meta.lifecycle == ClientLifecycle::Alive)
+    {
+        Err(crate::InventoryGrantRejectReason::NotAlive)
+    } else {
+        crate::loot_key_text(key)
+            .ok_or(crate::InventoryGrantRejectReason::InvalidKey)
+            .and_then(|key| {
+                let key = inventory::ItemKey::parse(key.to_owned())
+                    .map_err(|_| crate::InventoryGrantRejectReason::InvalidKey)?;
+                crate::loot_catalog()
+                    .id_for_key(&key)
+                    .ok_or(crate::InventoryGrantRejectReason::UnknownItem)
+            })
+            .and_then(|definition| {
+                let meta = world.client_meta_mut(id);
+                let inventory = meta
+                    .inventory
+                    .get_or_insert_with(|| crate::PlayerInventory::new(id));
+                inventory.grant(id, request_id, definition, quantity)
+            })
+    };
+    match result {
+        Ok(notice) => world.push_event(
+            tick,
+            EventAudience::Client(id),
+            SimEvent::InventoryGrantAccepted {
+                request_id,
+                definition: notice.definition,
+                quantity: notice.quantity,
+                revision: notice.revision,
+            },
+        ),
+        Err(reason) => world.push_event(
+            tick,
+            EventAudience::Client(id),
+            SimEvent::InventoryGrantRejected { request_id, reason },
+        ),
     }
 }
 

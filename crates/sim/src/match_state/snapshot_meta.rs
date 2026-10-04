@@ -22,6 +22,8 @@ pub struct ClientSnapshotMeta {
     pub loadout: Option<LoadoutSpec>,
     pub life_sequence: LifeSequence,
 
+    pub inventory: Option<crate::PlayerInventory>,
+
     pub item_use_spawn_ms: i32,
     pub item_use_entity: Option<crate::EntityRef>,
 

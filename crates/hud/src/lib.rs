@@ -15,6 +15,7 @@ mod images;
 mod iris;
 mod killcam_skip;
 mod killfeed;
+mod loot_status;
 mod mantle_hint;
 mod menus;
 mod overhead_names;

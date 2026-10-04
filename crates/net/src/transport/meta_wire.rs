@@ -465,6 +465,16 @@ pub(crate) fn encode_action(out: &mut WireWriter, action: &ClientAction) {
             out.put_u32(request_id);
             out.put_i32(amount);
         }
+        ClientAction::DebugGrantLoot {
+            request_id,
+            key,
+            quantity,
+        } => {
+            out.put_u8(23);
+            out.put_u32(request_id);
+            out.put_bytes(&key);
+            out.put_u16(quantity);
+        }
         ClientAction::ForceDeath { request_id } => {
             out.put_u8(4);
             out.put_u32(request_id);
@@ -611,6 +621,19 @@ pub(crate) fn decode_action(input: &mut WireReader<'_>) -> Result<ClientAction, 
             request_id: input.get_u32()?,
             amount: input.get_i32()?,
         }),
+        23 => {
+            let request_id = input.get_u32()?;
+            let mut key = [0; sim::LOOT_KEY_BYTES];
+            input.get_bytes(&mut key)?;
+            if sim::loot_key_text(&key).is_none() {
+                return Err(WireError::Malformed("invalid loot item key"));
+            }
+            Ok(ClientAction::DebugGrantLoot {
+                request_id,
+                key,
+                quantity: input.get_u16()?,
+            })
+        }
         11 => {
             let request_id = input.get_u32()?;
             let mut name = [0u8; 16];
@@ -826,7 +849,7 @@ pub fn decode_snapshot_meta(
     let mut clients = Vec::with_capacity(count.min(64));
     for _ in 0..count {
         let client = ClientId(input.get_u32()?);
-        clients.push((client, decode_client_meta(input)?));
+        clients.push((client, decode_client_meta(input, client)?));
     }
     let journal_count = input.get_u16()? as usize;
     let mut journal = Vec::with_capacity(journal_count.min(64));
@@ -1439,6 +1462,7 @@ fn encode_client_meta(out: &mut WireWriter, meta: &ClientSnapshotMeta) {
     }
     super::delta::encode_missile_target(out, lock.aim);
     out.put_i32(lock.acquire_started_at);
+    encode_player_inventory(out, meta.inventory.as_ref());
 }
 
 fn decode_shield_vector(input: &mut WireReader<'_>) -> Result<[f32; 3], WireError> {
@@ -1450,7 +1474,10 @@ fn decode_shield_vector(input: &mut WireReader<'_>) -> Result<[f32; 3], WireErro
     }
 }
 
-fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, WireError> {
+fn decode_client_meta(
+    input: &mut WireReader<'_>,
+    owner: ClientId,
+) -> Result<ClientSnapshotMeta, WireError> {
     let controls = sim::ScriptControls {
         frozen: input.get_u8()? != 0,
         weapons_disabled: input.get_u8()? != 0,
@@ -1665,6 +1692,7 @@ fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, 
         aim: super::delta::decode_missile_target(input)?,
         acquire_started_at: input.get_i32()?,
     };
+    let inventory = decode_player_inventory(input, owner)?;
     Ok(ClientSnapshotMeta {
         god_mode,
         controls,
@@ -1673,6 +1701,7 @@ fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, 
         lifecycle,
         loadout,
         life_sequence,
+        inventory,
         item_use_spawn_ms,
         item_use_entity,
         ammo_clip,
@@ -1711,6 +1740,104 @@ fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, 
         menu_commands,
         location_selection,
     })
+}
+
+fn encode_player_inventory(out: &mut WireWriter, inventory: Option<&sim::PlayerInventory>) {
+    let Some(inventory) = inventory else {
+        out.put_u8(0);
+        return;
+    };
+    out.put_u8(1);
+    let backpack = inventory.backpack();
+    out.put_u32(backpack.revision());
+    out.put_u32(inventory.next_serial());
+    out.put_u16(backpack.items().len() as u16);
+    for item in backpack.items() {
+        let placement = backpack
+            .placement(item.id)
+            .expect("validated inventory item must have a placement");
+        out.put_u64(item.id.0);
+        out.put_u16(item.definition.0);
+        out.put_u16(item.quantity);
+        out.put_u16(item.condition);
+        out.put_u8(placement.x);
+        out.put_u8(placement.y);
+        out.put_u8(u8::from(placement.rotated));
+    }
+    match inventory.latest_notice() {
+        None => out.put_u8(0),
+        Some(notice) => {
+            out.put_u8(1);
+            out.put_u32(notice.request_id);
+            out.put_u16(notice.definition.0);
+            out.put_u16(notice.quantity);
+            out.put_u32(notice.revision);
+        }
+    }
+}
+
+fn decode_player_inventory(
+    input: &mut WireReader<'_>,
+    owner: ClientId,
+) -> Result<Option<sim::PlayerInventory>, WireError> {
+    match input.get_u8()? {
+        0 => return Ok(None),
+        1 => {}
+        _ => return Err(WireError::Malformed("bad player inventory tag")),
+    }
+    let revision = input.get_u32()?;
+    let next_serial = input.get_u32()?;
+    let count = usize::from(input.get_u16()?);
+    if count > 256 {
+        return Err(WireError::Malformed("backpack item count exceeds limit"));
+    }
+    let mut items = Vec::with_capacity(count);
+    let mut placements = Vec::with_capacity(count);
+    for _ in 0..count {
+        let id = sim::ItemInstanceId(input.get_u64()?);
+        let definition = sim::ItemDefId(input.get_u16()?);
+        items.push(sim::ItemInstance {
+            id,
+            definition,
+            quantity: input.get_u16()?,
+            condition: input.get_u16()?,
+        });
+        placements.push(sim::Placement {
+            instance: id,
+            x: input.get_u8()?,
+            y: input.get_u8()?,
+            rotated: match input.get_u8()? {
+                0 => false,
+                1 => true,
+                _ => return Err(WireError::Malformed("bad backpack rotation tag")),
+            },
+        });
+    }
+    let latest_notice = match input.get_u8()? {
+        0 => None,
+        1 => Some(sim::InventoryNotice {
+            request_id: input.get_u32()?,
+            definition: sim::ItemDefId(input.get_u16()?),
+            quantity: input.get_u16()?,
+            revision: input.get_u32()?,
+        }),
+        _ => return Err(WireError::Malformed("bad inventory notice tag")),
+    };
+    let inventory = sim::PlayerInventory::from_rows(
+        owner,
+        revision,
+        next_serial,
+        items,
+        placements,
+        latest_notice,
+    )
+    .map_err(|_| WireError::Malformed("invalid player inventory"))?;
+    if latest_notice.is_some_and(|notice| notice.revision > revision) {
+        return Err(WireError::Malformed(
+            "inventory notice revision is in the future",
+        ));
+    }
+    Ok(Some(inventory))
 }
 
 fn encode_vision(out: &mut WireWriter, vision: Option<&sim::VisionChange>) {
@@ -2103,6 +2230,23 @@ pub(crate) fn encode_event(out: &mut WireWriter, event: &SimEvent) {
             out.put_u32(weapon);
             out.put_u8(give_reject_reason_tag(reason));
         }
+        SimEvent::InventoryGrantAccepted {
+            request_id,
+            definition,
+            quantity,
+            revision,
+        } => {
+            out.put_u8(19);
+            out.put_u32(request_id);
+            out.put_u16(definition.0);
+            out.put_u16(quantity);
+            out.put_u32(revision);
+        }
+        SimEvent::InventoryGrantRejected { request_id, reason } => {
+            out.put_u8(20);
+            out.put_u32(request_id);
+            out.put_u8(reason.wire_tag());
+        }
         SimEvent::ConfigurationChangeAccepted {
             request_id,
             from,
@@ -2198,6 +2342,18 @@ pub(crate) fn decode_event(input: &mut WireReader<'_>) -> Result<SimEvent, WireE
             request_id: input.get_u32()?,
             weapon: input.get_u32()?,
             reason: give_reject_reason_from_tag(input.get_u8()?)?,
+        }),
+        19 => Ok(SimEvent::InventoryGrantAccepted {
+            request_id: input.get_u32()?,
+            definition: sim::ItemDefId(input.get_u16()?),
+            quantity: input.get_u16()?,
+            revision: input.get_u32()?,
+        }),
+        20 => Ok(SimEvent::InventoryGrantRejected {
+            request_id: input.get_u32()?,
+            reason: sim::InventoryGrantRejectReason::from_wire_tag(input.get_u8()?).ok_or(
+                WireError::Malformed("unknown inventory grant reject reason"),
+            )?,
         }),
         16 => Ok(SimEvent::ConfigurationChangeAccepted {
             request_id: input.get_u32()?,

@@ -294,6 +294,36 @@ impl GridContainer {
         Ok(())
     }
 
+    pub fn increase_stack(
+        &mut self,
+        instance: ItemInstanceId,
+        expected_revision: u32,
+        quantity: u16,
+        catalog: &Catalog,
+    ) -> Result<(), GridError> {
+        self.expect_revision(expected_revision)?;
+        self.ensure_can_increment_revision()?;
+        let index = self
+            .items
+            .binary_search_by_key(&instance, |item| item.id)
+            .map_err(|_| GridError::ItemNotFound(instance))?;
+        let item = &self.items[index];
+        let definition = definition_for(catalog, item.definition)?;
+        let available = definition
+            .max_stack
+            .checked_sub(item.quantity)
+            .ok_or(GridError::ContainerInvariant(self.id))?;
+        if quantity == 0 || quantity > available {
+            return Err(GridError::StackCapacity {
+                available,
+                requested: quantity,
+            });
+        }
+        self.items[index].quantity += quantity;
+        self.increment_revision_unchecked();
+        Ok(())
+    }
+
     pub fn first_fit(
         &self,
         definition: ItemDefId,

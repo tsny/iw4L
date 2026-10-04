@@ -42,6 +42,7 @@ members = [
     "crates/killcam_iw4",
     "crates/input_iw4",
     "crates/inventory",
+    "crates/inventory_lab",
     "crates/launcher",
     "crates/lighting_iw4",
     "crates/marks_iw4",

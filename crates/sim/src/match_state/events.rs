@@ -119,6 +119,18 @@ pub enum SimEvent {
         reason: GiveRejectReason,
     },
 
+    InventoryGrantAccepted {
+        request_id: ActionRequestId,
+        definition: inventory::ItemDefId,
+        quantity: u16,
+        revision: u32,
+    },
+
+    InventoryGrantRejected {
+        request_id: ActionRequestId,
+        reason: crate::InventoryGrantRejectReason,
+    },
+
     ConfigurationChangeAccepted {
         request_id: ActionRequestId,
         from: u32,
@@ -203,6 +215,18 @@ pub const SIM_EVENT_ROSTER: &[SimEventRow] = &[
         control_fact: "the refusal and its reason, so the console prints why rather than nothing",
     },
     SimEventRow {
+        variant: "InventoryGrantAccepted",
+        reliable: true,
+        control_fact: "authority accepted an authored loot grant and published the resulting \
+                       backpack revision",
+    },
+    SimEventRow {
+        variant: "InventoryGrantRejected",
+        reliable: true,
+        control_fact: "authority refused an authored loot grant, so the debug command closes \
+                       with a typed reason",
+    },
+    SimEventRow {
         variant: "ConfigurationChangeAccepted",
         reliable: true,
         control_fact: "authority accepted the held weapon's configuration transition",
@@ -259,6 +283,8 @@ pub fn sim_event_is_reliable(event: &SimEvent) -> bool {
         SimEvent::ClassRejected { .. } => "ClassRejected",
         SimEvent::GiveAccepted { .. } => "GiveAccepted",
         SimEvent::GiveRejected { .. } => "GiveRejected",
+        SimEvent::InventoryGrantAccepted { .. } => "InventoryGrantAccepted",
+        SimEvent::InventoryGrantRejected { .. } => "InventoryGrantRejected",
         SimEvent::ConfigurationChangeAccepted { .. } => "ConfigurationChangeAccepted",
         SimEvent::ConfigurationChangeRejected { .. } => "ConfigurationChangeRejected",
         SimEvent::Spawned { .. } => "Spawned",

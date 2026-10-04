@@ -234,4 +234,12 @@ impl Snapshot {
             meta: SnapshotMeta::default(),
         }
     }
+
+    pub fn project_private_inventory(&mut self, viewer: ClientId) {
+        for (client, meta) in &mut self.meta.clients {
+            if *client != viewer {
+                meta.inventory = None;
+            }
+        }
+    }
 }

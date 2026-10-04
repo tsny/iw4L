@@ -29,6 +29,7 @@ const REPO_TOOLS: &[&str] = &[
     "mr ls",
     "mr fmt FILE.rs...",
     "publish-check",
+    "loot validate [items.json]",
     "licenses",
 ];
 
@@ -113,6 +114,7 @@ fn repo(cmd: &str, rest: &[String]) -> Option<Res<()>> {
     match cmd {
         "licenses" => Some(xtask::licenses::run_cli(&root)),
         "mr" => Some(xtask::mrs::run_cli(&root, rest)),
+        "loot" => Some(xtask::loot::run_cli(&root, rest)),
         "publish-check" => Some(xtask::publish_check::run_cli(&root)),
         _ => None,
     }

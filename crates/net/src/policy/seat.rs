@@ -187,6 +187,7 @@ pub fn snapshot_and_sample_for_viewer(
 ) -> (Snapshot, Option<SeatSample>) {
     let (mut out, sample) = seat_snapshot(archive, seats, live, viewer, now_ms);
     reveal_shown_movers(&mut out, viewer);
+    out.project_private_inventory(viewer);
     (out, sample)
 }
 
