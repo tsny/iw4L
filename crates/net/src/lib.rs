@@ -143,6 +143,7 @@ pub use transport::frame::{
     Frame, FrameSectionBytes, LoopbackTransport, Transport, TransportError,
     authoritative_snapshot_hash, frame_from_acked_tick, frame_from_tick,
 };
+pub use transport::inventory_wire::{InventorySyncDecoder, InventorySyncEncoder};
 pub use transport::loopback_live::{ListenLoopback, ReceivedTick};
 pub use transport::master::{
     CONTENT_IW4, CONTENT_IW5, CONTENT_T5, MasterAdvert, MasterBridge, MasterBridgeState,
@@ -173,4 +174,4 @@ pub use transport::wire::{WireError, WireReader, WireWriter};
 
 pub use svc_script_audio::SvcScriptAudio;
 
-pub const PROTOCOL_VERSION: u32 = 103;
+pub const PROTOCOL_VERSION: u32 = 105;

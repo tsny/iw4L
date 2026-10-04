@@ -1,6 +1,6 @@
 # Loot and grid inventory design
 
-Status: implementation in progress; catalog and grid core complete. Last updated: 2026-10-04.
+Status: implementation in progress; simulation transaction core complete. Last updated: 2026-10-04.
 
 This is the canonical, living source for the loot and grid-inventory work. It records the intended architecture, package boundaries, current state, and next handoff. Chats are not a source of truth. Session evidence and historical decisions belong in `context/artifacts/2026-10-04-loot-inventory/`; this file is updated when the present design or status changes.
 
@@ -102,6 +102,49 @@ The initial authored set is bandage (stacked heal), medkit (large heal), rifle-a
 
 Loot tables are a separate versioned file containing deterministic weighted entries and quantity ranges. Map placement is deferred; the first slice spawns a named table through a debug/authoring command.
 
+## Debug world spawning and basic pickups
+
+The first authoring surface is the existing console, not a new spawn UI. It already provides parsing, completion, cheat gating, request IDs and feedback, and a later palette can issue the same typed requests. The planned grammar is:
+
+```text
+spawn weapon <weapon> [attachment...]
+spawn loot <namespace:item> [quantity]
+spawn loot-table <namespace:table>
+spawn npc dummy|bot
+```
+
+`spawn loot` means “create one world bag containing this authored item,” not “make the generic item an `ET_ITEM`.” `spawn npc dummy` creates an idle simulated client and `spawn npc bot` creates one with the existing host controller. An authored non-player NPC system is a later design, not something represented as a bot-shaped script model. Commands are registered only as their typed backends become real; unavailable variants do not silently fall back to props.
+
+### Placement contract
+
+The peer request carries a bounded spawn recipe, never a trusted position. At action execution the authority requires cheats, an Alive requesting player and loaded collision, then derives the eye from authoritative origin plus view height and traces along authoritative view angles to a fixed maximum range. The initial recipes require static map support: no miss, no start/all-solid result, and a walkable upward normal. The hit point is offset and settled using bounds supplied by the recipe, followed by a clearance trace. Weapons and bags use their small world bounds; an NPC uses the player hull. Dynamic players and entities do not become accidental spawn platforms in the first slice.
+
+Placement returns either one finite origin/normal/yaw or a typed refusal such as `NotAllowed`, `NotAlive`, `NoWorld`, `NoSurface`, `SurfaceTooSteep`, `Blocked`, `CapacityExhausted`, `ContentsDoNotFit`, or `RosterFull`. Recipe-specific creation is atomic after placement: a failed entity allocation, container fill, model-policy check or bot-slot allocation leaves no partial object. Successful and rejected requests produce reliable, request-correlated feedback; success reports the authoritative kind and final position.
+
+Weapon and loot requests enter `TickInput` and execute inside `sim::step`, so authority, demo and replay see the same recipe and world state. Name and attachment resolution happens against installed session content before encoding bounded IDs. A loot-table roll consumes a dedicated deterministic match-RNG domain and table content participates in the session digest. The host-only NPC adapter uses the same placement rules, then records the resolved `SpawnPick::At` plus the ordinary join/class actions; bot movement thereafter continues to enter `TickInput` as `UserCmd`. A non-host `spawn npc` is explicitly refused until remote host administration exists.
+
+### Typed spawn products
+
+- **Weapon:** expose a narrow stationary-spawn operation in the existing dropped-weapon subsystem. It creates a normal `DroppedItem`/`ET_ITEM`, uses the configured starting-ammo rules, retains the existing 16-drop policy, world model, touch-for-ammo behavior, aimed Use pickup and weapon-swap rules. It is not an `inventory::ItemInstance` and does not create weapon durability, attachments-as-items or a bridge into the grid inventory.
+- **Loot:** create a `LootWorldContainer` record that owns an aggregate `GridContainer`, collision-safe `ContainerId`, world entity reference, presentation definition and pose. Direct item and loot-table recipes both populate the grid with authority-allocated `ItemInstanceId`s before the record becomes visible. World-created container and instance ID domains are disjoint from player-created IDs, and their next serials are snapshot state; transfer never changes an instance ID.
+- **NPC:** adapt `BotAddQueue` to carry `dummy|bot` and the resolved forced spawn. The bot remains a normal client with lifecycle, player collision, loadout, damage, death and snapshots. No second AI entity implementation is introduced merely for the command.
+
+### One Use target
+
+World bags must not add a second independent Use handler beside weapon pickup. Refactor aimed selection into one deterministic `UseTarget` arbitration covering dropped weapons, retrievable projectiles and loot containers. Candidates share distance, view-cone and line-of-sight scoring, then use an explicit kind priority and entity-number tie break. One Use edge dispatches to at most one target; automatic touch pickup for ammo and already-owned weapons remains separate.
+
+An aimed bag publishes a private use hint. Use grants that player access to its `ContainerId` and causes the inventory overlay to open; it never auto-transfers an item. The authority rechecks entity generation, Alive state, range and line of sight, revoking on failure, death, removal or teardown. Opening another bag replaces the previous grant. Closing the overlay sends a typed release so an empty, unobserved bag can be removed deterministically. Multiple players may hold access to the same bag; expected revisions serialize races without partial transfer.
+
+The world-container package therefore begins by lifting cross-container mutation into an authority-owned container registry. Player backpacks may retain their deterministic IDs, but lookup, access checks and atomic source/destination commits cannot remain methods that assume both IDs are the caller's backpack. Private snapshot projection sends a player only their backpack, their current grant and the public pose/presentation of world bags; bag contents remain hidden without a grant.
+
+### Delivery order and acceptance
+
+1. **Spawn foundation and weapon proof:** add the `spawn` console parser/completion, bounded weapon recipe/action/verdict codecs, authority look trace and stationary dropped-weapon constructor. Prove miss/steep/blocked/capacity refusals, successful pickup, snapshot adoption and replay determinism before adding another recipe.
+2. **World loot pickup:** add the authority container registry and disjoint world ID allocators, direct-item and named-table bag recipes, one Use target, access release/revocation, private revision sync, overlay opening and player↔bag transfer. Empty bags disappear only after their last grant is released or revoked.
+3. **NPC adapter:** add `spawn npc dummy|bot` through the bot roster, forced-spawn and normal class lifecycle. Prove hull clearance, full-roster refusal, idle dummy behavior and controller-driven bot behavior at the selected point.
+
+Headless artifact probes cover bounded codecs, atomic failure, deterministic placement and replay. Live acceptance covers visible weapon/bag presentation, pickup hints, one-press/one-target behavior, two-client privacy and transfer races. NPC acceptance proves that the spawned actor takes damage, dies/respawns and is controlled through the normal client funnel. No ordinary test or permanent probe is added without owner approval.
+
 ## Authority and transactions
 
 Opening a world container is an authority request. The authority verifies lifecycle, range, line of sight, entity/container identity, and access policy, then publishes the granted `ContainerId`. Moving out of range, entity removal, death, or session teardown revokes access.
@@ -152,21 +195,33 @@ Owned paths: new `crates/inventory_lab/` and `xtask/src/loot.rs`, plus minimal w
 
 ### Simulation integration
 
-Status: in progress. The first visible grant/HUD seam is complete; general grid transactions remain.
+Status: complete on 2026-10-04. Cross-container commits activate when an accessible world container exists.
 
 Owned paths: new `crates/sim/src/inventory/` plus narrow hooks in input, step, world/frame, adoption, and snapshot metadata. Depends on catalog/grid core. Deliver player containers, deterministic instance allocation, revisioned transactions, typed rejection/accept events, canonical snapshots, teardown, and replay-safe cloning. No world entities or persistence. Complete when an artifact probe demonstrates accepted, overlapping, out-of-bounds, and stale-revision moves through `sim::step` and snapshot adoption.
 
 ### Network transport
 
+Status: complete on 2026-10-04.
+
 Owned paths: new `crates/net/src/transport/inventory_wire.rs` plus narrow registrations in action/meta/frame codecs and seat filtering. Depends on simulation integration. Deliver bounded action codecs, revision sync, private projection, decoder reconstruction, and authoritative hash coverage. Complete when wire round trips and malformed-input evidence are recorded and existing protocol callers build.
 
 ### Inventory overlay
 
+Status: complete on 2026-10-04. Runtime opening remains an explicit request until the owner chooses the default keyboard binding.
+
 Owned paths: new `crates/inventory_ui/`, the generic modal contract in `frame`, and narrow plugin/input registration. Depends on catalog/grid core and presented simulation state; it may begin against the lab adapter before network transport is finished. Deliver two grids, drag/rotate, tooltip, pending UX, cursor/input capture, teardown, and placeholder icons. Complete when the same UI works in the asset-free lab and emits one transaction per completed drop.
+
+### World spawn foundation and weapon pickup
+
+Owned paths: typed debug-spawn input/events and codecs, a console `spawn` dispatcher, the shared authority placement resolver, and a narrow stationary constructor in the existing weapon-item subsystem. Depends on simulation and transport. Deliver `spawn weapon`, completion from the installed weapon catalog, authority-derived look placement, reliable typed feedback and normal weapon pickup behavior. Complete when headless evidence proves deterministic placement/refusal and replay, and a data-backed run proves a spawned weapon can be seen and picked up. This package does not make weapons grid-inventory items.
 
 ### World loot containers
 
-Owned paths: a focused sim world-loot module, use-target integration, and `render_anim/src/occupancy/loot.rs`; session installs presentation facts. Depends on simulation and transport. Deliver a debug spawn command, one aggregate bag model, access grant/revoke, use hint, and player↔bag transfers. Complete when a two-client run proves distance/access checks and private contents, with rendering evidence deferred if game data is unavailable.
+Owned paths: an authority-owned container registry and world ID allocators, a focused sim world-loot module, unified use-target integration, and `render_anim/src/occupancy/loot.rs`; session installs presentation facts. Depends on the world spawn foundation, simulation and transport. Deliver direct-item and named-table bag recipes, one aggregate bag model, access grant/release/revoke, use hint, overlay opening and player↔bag transfers. Complete when a two-client run proves distance/access checks, revision races and private contents, with rendering evidence deferred if game data is unavailable.
+
+### NPC spawn adapter
+
+Owned paths: the bot add/boot queues plus the existing spawn console façade. Depends on the world spawn placement resolver. Deliver host-only `spawn npc dummy|bot`, player-hull clearance, forced placement and ordinary bot join/class/controller behavior. Complete when an idle dummy and controlled bot both materialize at the selected point and remain ordinary simulated clients through damage, death and respawn. Authored non-player creatures remain a separate future package.
 
 ### Basic item effects
 
@@ -184,11 +239,11 @@ Every package runs the narrowest relevant Cargo checks and records what could no
 
 ## Current state and next handoff
 
-- Implemented: the catalog/grid core and asset-free authoring tools; simulation-owned 8×6 player backpacks with per-owner deterministic instance allocation, atomic authored grants and stacking, typed accept/reject events, cloning, snapshot adoption and teardown; bounded grant/meta wire codecs with per-viewer inventory projection; `loot_grant <namespace:item> [quantity]`; and a live HUD strip showing backpack kilograms/cell occupancy plus a timed pickup toast. The loot catalog now participates in the simulation content digest and the game protocol is version 103. This is a visible vertical seam, not completion of the simulation or transport packages.
-- Verified: `cargo check --workspace --all-targets`; permanent catalog/lab checks; an asset-free `sim::step` probe covering accepted and unknown-item grants, cloning, snapshot adoption and teardown; a second probe covering stacking, atomic full-backpack rejection, private projection, snapshot/action wire round trips and typed-event reconstruction; and `make publish-check`. Warnings-denied Clippy passes for the pure inventory crate; the existing `sim`, `net`, and `hud` crates have unrelated pre-existing warnings-denied failures, so the full lint gate remains unavailable.
-- Not verified: in-game visual acceptance without retail game data; player-driven move/rotate/split/merge transactions through `sim::step`; overlap, out-of-bounds and stale-revision action rejection; the full grid overlay; world-model availability; map use targeting; multiplayer bandwidth under populated inventories; death policy; item effects; or persistence.
+- Implemented: the catalog/grid core and asset-free authoring tools; simulation-owned 8×6 player backpacks with stable item identities, deterministic authority-side split allocation, atomic grant/move/rotate/split/merge transactions, revision validation, typed reliable verdicts, cloning, snapshot adoption and teardown; bounded transaction/grant codecs and revision-based private inventory synchronization; a reusable `inventory_ui` overlay with two authored grids, drag/release, rotation, local valid/invalid ghosts, item tooltips, placeholder tiles and pending-authority UX; the shared modal-input/cursor contract; `loot_grant <namespace:item> [quantity]`; and a live HUD strip showing backpack kilograms/cell occupancy plus a timed pickup toast. The runtime adapter reads presented backpack state, emits one authoritative transaction per completed drop, resolves reliable verdicts, and tears down with the match. Inventory semantics participate in authoritative snapshot hashing, the loot catalog participates in the simulation content digest, and the game protocol is version 105.
+- Verified: `cargo check --workspace --all-targets`; permanent catalog/lab checks including exactly-one-drop emission and pending acceptance; warnings-denied Clippy for `inventory` and `inventory_ui`; an asset-free rendered lab preview with aligned 8×6/6×6 grids, rectangular placeholder tiles, stacks and weight/revision headers; the simulation and network probes recorded above; and `make publish-check`. The existing `sim`, `net`, and `hud` crates have unrelated pre-existing warnings-denied failures, so the full lint gate remains unavailable.
+- Not verified: the overlay inside a retail-data match; an accepted cross-container transfer before world containers and access grants exist; multiplayer bandwidth under populated inventories; world-model availability; map use targeting; death policy; item effects; or persistence.
 - Current blocker: live map/render acceptance needs legally obtained game data. Catalog, grid, authoring tools, simulation, codecs, and placeholder UI are not blocked.
-- Next package: **Finish simulation integration** with revisioned move/split/merge/transfer actions and their acceptance/rejection evidence. Reuse the grant seam; do not begin persistence, weapon-item bridging, or world rendering first.
+- Next package: **World spawn foundation and weapon pickup** with the console façade, bounded typed recipe/action/verdict, authority-derived look placement and a stationary dropped-weapon constructor. Then build aggregate world loot containers and the NPC adapter. Do not begin persistence or turn weapons into grid-inventory instances.
 - Owner decisions still open: inventory/death retention policy; default backpack dimensions; initial keyboard binding; missing runtime presentation policy; whether rifle ammo targets the held weapon or an authored weapon family.
 
 ## Session finish

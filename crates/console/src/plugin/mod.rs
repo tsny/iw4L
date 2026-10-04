@@ -140,6 +140,7 @@ impl Plugin for ConsolePlugin {
                 )
                     .chain()
                     .after(InputSystems)
+                    .after(frame::ModalInputSet)
                     .after(InputFocusSystems::Dispatch),
             )
             .add_systems(
@@ -316,6 +317,7 @@ fn publish_client_action_input(
     mut scripted: ResMut<ConsoleInputState>,
     console: Res<ConsoleState>,
     script_menus: Option<Res<hud::ScriptMenus>>,
+    modal: Res<frame::ModalInput>,
     mut hud_input: ResMut<frame::HudInputView>,
     settings: Res<frame::GameSettings>,
     mut out: ResMut<ClientActionInput>,
@@ -370,6 +372,7 @@ fn publish_client_action_input(
     }
     let modal_captured = console.open
         || script_menus.is_some_and(|menus| menus.captures_input())
+        || modal.captured()
         || keys.just_pressed(KeyCode::Escape)
         || pad.is_some_and(|pad| pad.just_pressed(bevy::input::gamepad::GamepadButton::Start));
     let captured = !devices.focused || modal_captured;
@@ -589,6 +592,7 @@ fn publish_client_action_input(
 fn sync_cursor_grab(
     console: Res<ConsoleState>,
     script_menus: Option<Res<hud::ScriptMenus>>,
+    modal: Res<frame::ModalInput>,
     screen: Option<Res<AppScreen>>,
     mut focused: MessageReader<WindowFocused>,
     mut entered: MessageReader<CursorEntered>,
@@ -604,7 +608,7 @@ fn sync_cursor_grab(
     let in_game = screen
         .as_ref()
         .is_some_and(|s| matches!(**s, AppScreen::InGame));
-    let grab = in_game && !console.open && !menu_open;
+    let grab = in_game && !console.open && !menu_open && !modal.captured();
     let Ok(mut cursor) = windows.single_mut() else {
         return;
     };

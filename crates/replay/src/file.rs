@@ -2,8 +2,8 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
-use net::WorldObjectSyncDecoder;
 use net::{Frame, PROTOCOL_VERSION, Transport, TransportError, WireError, WireReader};
+use net::{InventorySyncDecoder, WorldObjectSyncDecoder};
 use sim::RNG_DOMAIN_SCHEME;
 
 pub const MAGIC: [u8; 8] = *b"IW4LDEMO";
@@ -229,6 +229,7 @@ pub struct RecordReader {
     frames: u64,
     identity: MatchRecordIdentity,
     world_decoder: WorldObjectSyncDecoder,
+    inventory_decoder: InventorySyncDecoder,
 }
 
 impl RecordReader {
@@ -272,6 +273,7 @@ impl RecordReader {
             frames: 0,
             identity,
             world_decoder: WorldObjectSyncDecoder::default(),
+            inventory_decoder: InventorySyncDecoder::default(),
         })
     }
 
@@ -299,7 +301,11 @@ impl RecordReader {
             Err(e) => return Err(e.into()),
         }
         let mut reader = WireReader::new(&bytes);
-        let frame = Frame::decode(&mut reader, &mut self.world_decoder)?;
+        let frame = Frame::decode(
+            &mut reader,
+            &mut self.world_decoder,
+            &mut self.inventory_decoder,
+        )?;
         self.frames += 1;
         Ok(Some(frame))
     }

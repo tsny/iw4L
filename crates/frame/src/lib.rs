@@ -32,6 +32,7 @@ pub use session::{
 };
 pub use settings::{DisplayResolution, GameSettings};
 pub use ui::{
-    HostMatchRules, UiBindRequest, UiBindingCapture, UiExecCommand, UiMenuDvars, UiMenuKey,
-    UiMenuRequest, UiPartyState, UiPlayMusic, UiPlaySound, UiStopMusic, register_ui_contracts,
+    HostMatchRules, ModalInput, ModalInputSet, UiBindRequest, UiBindingCapture, UiExecCommand,
+    UiMenuDvars, UiMenuKey, UiMenuRequest, UiPartyState, UiPlayMusic, UiPlaySound, UiStopMusic,
+    register_ui_contracts,
 };

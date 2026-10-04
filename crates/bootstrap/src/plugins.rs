@@ -13,6 +13,7 @@ use bots::BotsPlugin;
 use console::ConsolePlugin;
 use frame::RuntimeRole;
 use hud::HudPlugin;
+use inventory_ui::InventoryUiPlugin;
 use net::NetPlugin;
 use render::RenderPlugin;
 use replay::ReplayPlugin;
@@ -40,6 +41,7 @@ pub fn add_runtime_plugins_with_role(app: &mut App, role: RuntimeRole) {
     app.add_plugins(AssetPlugin)
         .add_plugins(UiPlugin)
         .add_plugins(ConsolePlugin)
+        .add_plugins(InventoryUiPlugin)
         .add_plugins(net)
         .add_plugins((BotsPlugin, HudPlugin))
         .add_plugins(AudioPlugin)

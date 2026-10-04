@@ -9,6 +9,7 @@ description = "Asset-free interactive authoring preview for the grid inventory."
 [dependencies]
 bevy.workspace = true
 inventory.workspace = true
+inventory_ui.workspace = true
 
 [lints]
 workspace = true

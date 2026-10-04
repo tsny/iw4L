@@ -16,6 +16,7 @@ use crate::transport::bootstrap::{
 };
 use crate::transport::delta::{SnapshotDecoder, SnapshotEncoder};
 use crate::transport::frame::{Frame, frame_from_acked_tick};
+use crate::transport::inventory_wire::InventorySyncDecoder;
 use crate::transport::loopback_live::ReceivedTick;
 use crate::transport::meta_wire::WorldObjectSyncDecoder;
 use crate::transport::protocol::{
@@ -1610,14 +1611,16 @@ impl UdpClientLink {
                 };
                 let mut decoder = SnapshotDecoder::new();
                 let mut world_decoder = WorldObjectSyncDecoder::default();
+                let mut inventory_decoder = InventorySyncDecoder::default();
                 if let Some(baseline) = baseline.as_ref() {
                     decoder.adopt_baseline(baseline);
                     world_decoder.adopt_baseline(baseline.meta.world_objects.clone());
+                    inventory_decoder.adopt_baseline(&baseline.meta);
                 }
                 self.in_ack = header.sequence;
                 let mut input = WireReader::new(&payload);
-                let frame =
-                    Frame::decode(&mut input, &mut world_decoder).map_err(|e| e.to_string())?;
+                let frame = Frame::decode(&mut input, &mut world_decoder, &mut inventory_decoder)
+                    .map_err(|e| e.to_string())?;
                 let mut snapshot = decoder
                     .decode(&frame.snapshot_delta)
                     .map_err(|e| e.to_string())?;

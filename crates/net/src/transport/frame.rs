@@ -3,6 +3,7 @@ use sim::{ClientAction, ClientId, Snapshot, SnapshotMeta, Tick, TickInput};
 
 use crate::client::predict::CmdSeq;
 use crate::transport::delta::{SnapshotDelta, decode_usercmd, encode_usercmd};
+use crate::transport::inventory_wire::InventorySyncDecoder;
 use crate::transport::meta_wire::{
     SnapshotMetaSectionBytes, WorldObjectSyncDecoder, decode_actions, decode_snapshot_meta,
     encode_actions, encode_snapshot_meta_sections,
@@ -26,6 +27,7 @@ pub struct Frame {
 
     pub snapshot_meta: SnapshotMeta,
 
+    pub inventories_wire: Vec<u8>,
     pub world_objects_wire: Vec<u8>,
 
     pub reliable: ReliablePayload,
@@ -93,8 +95,12 @@ impl Frame {
         mark = out.len();
         self.snapshot_delta.encode(out);
         let snapshot_delta = out.len() - mark;
-        let meta =
-            encode_snapshot_meta_sections(out, &self.snapshot_meta, &self.world_objects_wire);
+        let meta = encode_snapshot_meta_sections(
+            out,
+            &self.snapshot_meta,
+            &self.inventories_wire,
+            &self.world_objects_wire,
+        );
         mark = out.len();
         encode_reliable_payload(
             out,
@@ -124,6 +130,7 @@ impl Frame {
     pub fn decode(
         input: &mut WireReader<'_>,
         world_decoder: &mut WorldObjectSyncDecoder,
+        inventory_decoder: &mut InventorySyncDecoder,
     ) -> Result<Self, WireError> {
         let tick = Tick(input.get_u32()?);
         let state_hash = input.get_u32()?;
@@ -141,7 +148,8 @@ impl Frame {
             acks.push((client, CmdSeq(input.get_u32()?)));
         }
         let snapshot_delta = SnapshotDelta::decode(input)?;
-        let (snapshot_meta, world_objects_wire) = decode_snapshot_meta(input, world_decoder)?;
+        let (snapshot_meta, inventories_wire, world_objects_wire) =
+            decode_snapshot_meta(input, world_decoder, inventory_decoder)?;
         let reliable = decode_reliable_payload(input)?;
         let svc_sounds = crate::svc_sound::decode_svc_sounds(input)?;
         let svc_scores = crate::svc_scores::decode_svc_scores(input)?;
@@ -157,6 +165,7 @@ impl Frame {
             acks,
             snapshot_delta,
             snapshot_meta,
+            inventories_wire,
             world_objects_wire,
             reliable,
             svc_sounds,
@@ -232,6 +241,7 @@ impl From<std::io::Error> for TransportError {
 pub struct LoopbackTransport {
     queue: std::collections::VecDeque<Vec<u8>>,
     world_decoder: WorldObjectSyncDecoder,
+    inventory_decoder: InventorySyncDecoder,
 }
 
 impl LoopbackTransport {
@@ -255,7 +265,11 @@ impl Transport for LoopbackTransport {
             return Ok(None);
         };
         let mut reader = WireReader::new(&bytes);
-        Ok(Some(Frame::decode(&mut reader, &mut self.world_decoder)?))
+        Ok(Some(Frame::decode(
+            &mut reader,
+            &mut self.world_decoder,
+            &mut self.inventory_decoder,
+        )?))
     }
 }
 
@@ -296,6 +310,7 @@ pub fn frame_from_acked_tick_with_reliable(
     let world_objects_wire = coder
         .encode_world_objects(snapshot.tick, &snapshot.meta.world_objects)
         .to_vec();
+    let inventories_wire = coder.encode_inventories(&snapshot.meta).to_vec();
     Frame {
         tick: snapshot.tick,
         state_hash: compute_state_hash(&snapshot.players),
@@ -304,6 +319,7 @@ pub fn frame_from_acked_tick_with_reliable(
         acks,
         snapshot_delta: coder.encode(snapshot),
         snapshot_meta: snapshot.meta.clone(),
+        inventories_wire,
         world_objects_wire,
         reliable,
         svc_sounds: Vec::new(),

@@ -10,6 +10,56 @@ pub type ActionRequestId = u32;
 
 pub const LOOT_KEY_BYTES: usize = inventory::MAX_ITEM_KEY_BYTES;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InventoryTransferAmount {
+    Whole,
+    Split(u16),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InventoryTransaction {
+    Move {
+        container: inventory::ContainerId,
+        expected_revision: u32,
+        instance: inventory::ItemInstanceId,
+        target: inventory::PlacementTarget,
+    },
+    Split {
+        container: inventory::ContainerId,
+        expected_revision: u32,
+        instance: inventory::ItemInstanceId,
+        quantity: u16,
+        target: inventory::PlacementTarget,
+    },
+    Merge {
+        container: inventory::ContainerId,
+        expected_revision: u32,
+        source_instance: inventory::ItemInstanceId,
+        destination_instance: inventory::ItemInstanceId,
+        quantity: u16,
+    },
+    Transfer {
+        source: inventory::ContainerId,
+        destination: inventory::ContainerId,
+        expected_source_revision: u32,
+        expected_destination_revision: u32,
+        instance: inventory::ItemInstanceId,
+        amount: InventoryTransferAmount,
+        target: inventory::PlacementTarget,
+    },
+}
+
+impl InventoryTransaction {
+    pub const fn kind(self) -> crate::InventoryTransactionKind {
+        match self {
+            Self::Move { .. } => crate::InventoryTransactionKind::Move,
+            Self::Split { .. } => crate::InventoryTransactionKind::Split,
+            Self::Merge { .. } => crate::InventoryTransactionKind::Merge,
+            Self::Transfer { .. } => crate::InventoryTransactionKind::Transfer,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ClientAction {
     JoinMatch {
@@ -84,6 +134,11 @@ pub enum ClientAction {
         request_id: ActionRequestId,
         key: [u8; LOOT_KEY_BYTES],
         quantity: u16,
+    },
+
+    InventoryTransaction {
+        request_id: ActionRequestId,
+        transaction: InventoryTransaction,
     },
 
     SetProfile {
@@ -216,6 +271,7 @@ pub fn action_request_id(action: &ClientAction) -> ActionRequestId {
         | ClientAction::ToggleGod { request_id }
         | ClientAction::DebugDamage { request_id, .. }
         | ClientAction::DebugGrantLoot { request_id, .. }
+        | ClientAction::InventoryTransaction { request_id, .. }
         | ClientAction::SetName { request_id, .. }
         | ClientAction::SetProfile { request_id, .. }
         | ClientAction::UseCopycat { request_id }

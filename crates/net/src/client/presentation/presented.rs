@@ -402,6 +402,8 @@ fn fpv_cues_from_events(
             | SimEvent::GiveRejected { .. }
             | SimEvent::InventoryGrantAccepted { .. }
             | SimEvent::InventoryGrantRejected { .. }
+            | SimEvent::InventoryTransactionAccepted { .. }
+            | SimEvent::InventoryTransactionRejected { .. }
             | SimEvent::ConfigurationChangeAccepted { .. }
             | SimEvent::ConfigurationChangeRejected { .. }
             | SimEvent::ScoreChanged { .. }

@@ -2022,6 +2022,7 @@ dependencies = [
  "diag",
  "frame",
  "hud",
+ "inventory_ui",
  "libc",
  "master_protocol",
  "net",
@@ -3748,6 +3749,19 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "inventory 0.1.0",
+ "inventory_ui",
+]
+
+[[package]]
+name = "inventory_ui"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "frame",
+ "inventory 0.1.0",
+ "net",
+ "sim",
+ "ui",
 ]
 
 [[package]]

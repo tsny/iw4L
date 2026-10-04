@@ -131,6 +131,20 @@ pub enum SimEvent {
         reason: crate::InventoryGrantRejectReason,
     },
 
+    InventoryTransactionAccepted {
+        request_id: ActionRequestId,
+        kind: crate::InventoryTransactionKind,
+        instance: inventory::ItemInstanceId,
+        source_revision: u32,
+        destination_revision: Option<u32>,
+    },
+
+    InventoryTransactionRejected {
+        request_id: ActionRequestId,
+        kind: crate::InventoryTransactionKind,
+        reason: crate::InventoryTransactionRejectReason,
+    },
+
     ConfigurationChangeAccepted {
         request_id: ActionRequestId,
         from: u32,
@@ -227,6 +241,18 @@ pub const SIM_EVENT_ROSTER: &[SimEventRow] = &[
                        with a typed reason",
     },
     SimEventRow {
+        variant: "InventoryTransactionAccepted",
+        reliable: true,
+        control_fact: "authority committed one inventory transaction and published the resulting \
+                       container revisions",
+    },
+    SimEventRow {
+        variant: "InventoryTransactionRejected",
+        reliable: true,
+        control_fact: "authority refused an inventory transaction with a typed reason, allowing \
+                       the client to clear its pending state",
+    },
+    SimEventRow {
         variant: "ConfigurationChangeAccepted",
         reliable: true,
         control_fact: "authority accepted the held weapon's configuration transition",
@@ -285,6 +311,8 @@ pub fn sim_event_is_reliable(event: &SimEvent) -> bool {
         SimEvent::GiveRejected { .. } => "GiveRejected",
         SimEvent::InventoryGrantAccepted { .. } => "InventoryGrantAccepted",
         SimEvent::InventoryGrantRejected { .. } => "InventoryGrantRejected",
+        SimEvent::InventoryTransactionAccepted { .. } => "InventoryTransactionAccepted",
+        SimEvent::InventoryTransactionRejected { .. } => "InventoryTransactionRejected",
         SimEvent::ConfigurationChangeAccepted { .. } => "ConfigurationChangeAccepted",
         SimEvent::ConfigurationChangeRejected { .. } => "ConfigurationChangeRejected",
         SimEvent::Spawned { .. } => "Spawned",

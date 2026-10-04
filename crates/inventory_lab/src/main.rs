@@ -9,6 +9,7 @@ use bevy::window::WindowResolution;
 use inventory::Catalog;
 
 use crate::model::LabState;
+use inventory_ui::{InventoryOverlay, InventoryUiPlugin, InventoryUiSet};
 
 const BASE_ITEMS: &str = include_str!("../../../content/loot/base/items.json");
 
@@ -41,9 +42,14 @@ fn run() -> Result<(), String> {
         return Ok(());
     }
 
+    let view = state.view();
+    let mut overlay = InventoryOverlay::default();
+    overlay.set_open(true);
     App::new()
         .insert_resource(ClearColor(Color::srgb(0.025, 0.03, 0.035)))
         .insert_resource(state)
+        .insert_resource(view)
+        .insert_resource(overlay)
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "IW4L inventory lab".into(),
@@ -53,12 +59,16 @@ fn run() -> Result<(), String> {
             }),
             ..default()
         }))
-        .add_systems(Startup, ui::setup)
+        .add_plugins(InventoryUiPlugin)
+        .init_resource::<ui::PendingLabDrops>()
+        .add_systems(Startup, |mut commands: Commands| {
+            commands.spawn(Camera2d);
+        })
         .add_systems(
             Update,
-            (ui::handle_keyboard, ui::handle_interactions, ui::rebuild_ui).chain(),
+            ui::fake_transactions.in_set(InventoryUiSet::Adapter),
         )
-        .add_systems(Update, ui::update_button_visuals)
+        .add_systems(Update, ui::quit)
         .run();
     Ok(())
 }

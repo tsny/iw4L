@@ -50,7 +50,9 @@ pub mod t5_destructible;
 mod world;
 pub mod world_objects;
 
-pub use ::inventory::{ItemDefId, ItemInstance, ItemInstanceId, Placement};
+pub use ::inventory::{
+    ContainerId, ItemDefId, ItemInstance, ItemInstanceId, Placement, PlacementTarget,
+};
 pub use adopt::{ADOPT_GAP_COUNT, ADOPT_GAPS, AdoptGap, AdoptReport};
 pub use bullet_collision::{
     AuthorityDObjCollision, AuthorityDObjCollisionBone, AuthorityDObjState, AuthorityModelOwner,
@@ -99,12 +101,13 @@ pub use identities::{
     ProjectileId, RNG_DOMAIN_SCHEME, RngDomain, ScriptModelId, ShotId,
 };
 pub use input::{
-    ActionRequestId, ClassId, ClientAction, LOOT_KEY_BYTES, MENU_RESPONSE_BYTES, SpawnPick,
-    TickInput, action_request_id, loot_key_field, loot_key_text, menu_response_field,
-    menu_response_text,
+    ActionRequestId, ClassId, ClientAction, InventoryTransaction, InventoryTransferAmount,
+    LOOT_KEY_BYTES, MENU_RESPONSE_BYTES, SpawnPick, TickInput, action_request_id, loot_key_field,
+    loot_key_text, menu_response_field, menu_response_text,
 };
 pub use inventory::{
     BACKPACK_HEIGHT, BACKPACK_WIDTH, InventoryGrantRejectReason, InventoryNotice, InventorySummary,
+    InventoryTransactionKind, InventoryTransactionReceipt, InventoryTransactionRejectReason,
     PlayerInventory, loot_catalog,
 };
 pub use mantle_xanim::MantleXAnimBind;

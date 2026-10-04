@@ -15,6 +15,7 @@ use sim::{
     SnapshotMeta, SpawnPick, Tick, WorldObjectSnapshot,
 };
 
+use crate::transport::inventory_wire::InventorySyncDecoder;
 use crate::transport::wire::{WireError, WireReader, WireWriter};
 
 pub const WORLD_SYNC_PERIOD_TICKS: u32 = 200;
@@ -475,6 +476,14 @@ pub(crate) fn encode_action(out: &mut WireWriter, action: &ClientAction) {
             out.put_bytes(&key);
             out.put_u16(quantity);
         }
+        ClientAction::InventoryTransaction {
+            request_id,
+            transaction,
+        } => {
+            out.put_u8(24);
+            out.put_u32(request_id);
+            encode_inventory_transaction(out, transaction);
+        }
         ClientAction::ForceDeath { request_id } => {
             out.put_u8(4);
             out.put_u32(request_id);
@@ -634,6 +643,10 @@ pub(crate) fn decode_action(input: &mut WireReader<'_>) -> Result<ClientAction, 
                 quantity: input.get_u16()?,
             })
         }
+        24 => Ok(ClientAction::InventoryTransaction {
+            request_id: input.get_u32()?,
+            transaction: decode_inventory_transaction(input)?,
+        }),
         11 => {
             let request_id = input.get_u32()?;
             let mut name = [0u8; 16];
@@ -703,9 +716,137 @@ pub(crate) fn decode_action(input: &mut WireReader<'_>) -> Result<ClientAction, 
     }
 }
 
+fn encode_inventory_target(out: &mut WireWriter, target: sim::PlacementTarget) {
+    out.put_u8(target.x);
+    out.put_u8(target.y);
+    out.put_u8(u8::from(target.rotated));
+}
+
+fn decode_inventory_target(input: &mut WireReader<'_>) -> Result<sim::PlacementTarget, WireError> {
+    let x = input.get_u8()?;
+    let y = input.get_u8()?;
+    let rotated = match input.get_u8()? {
+        0 => false,
+        1 => true,
+        _ => return Err(WireError::Malformed("bad inventory rotation tag")),
+    };
+    Ok(sim::PlacementTarget { x, y, rotated })
+}
+
+fn encode_inventory_transaction(out: &mut WireWriter, transaction: sim::InventoryTransaction) {
+    match transaction {
+        sim::InventoryTransaction::Move {
+            container,
+            expected_revision,
+            instance,
+            target,
+        } => {
+            out.put_u8(0);
+            out.put_u32(container.0);
+            out.put_u32(expected_revision);
+            out.put_u64(instance.0);
+            encode_inventory_target(out, target);
+        }
+        sim::InventoryTransaction::Split {
+            container,
+            expected_revision,
+            instance,
+            quantity,
+            target,
+        } => {
+            out.put_u8(1);
+            out.put_u32(container.0);
+            out.put_u32(expected_revision);
+            out.put_u64(instance.0);
+            out.put_u16(quantity);
+            encode_inventory_target(out, target);
+        }
+        sim::InventoryTransaction::Merge {
+            container,
+            expected_revision,
+            source_instance,
+            destination_instance,
+            quantity,
+        } => {
+            out.put_u8(2);
+            out.put_u32(container.0);
+            out.put_u32(expected_revision);
+            out.put_u64(source_instance.0);
+            out.put_u64(destination_instance.0);
+            out.put_u16(quantity);
+        }
+        sim::InventoryTransaction::Transfer {
+            source,
+            destination,
+            expected_source_revision,
+            expected_destination_revision,
+            instance,
+            amount,
+            target,
+        } => {
+            out.put_u8(3);
+            out.put_u32(source.0);
+            out.put_u32(destination.0);
+            out.put_u32(expected_source_revision);
+            out.put_u32(expected_destination_revision);
+            out.put_u64(instance.0);
+            match amount {
+                sim::InventoryTransferAmount::Whole => out.put_u8(0),
+                sim::InventoryTransferAmount::Split(quantity) => {
+                    out.put_u8(1);
+                    out.put_u16(quantity);
+                }
+            }
+            encode_inventory_target(out, target);
+        }
+    }
+}
+
+fn decode_inventory_transaction(
+    input: &mut WireReader<'_>,
+) -> Result<sim::InventoryTransaction, WireError> {
+    Ok(match input.get_u8()? {
+        0 => sim::InventoryTransaction::Move {
+            container: sim::ContainerId(input.get_u32()?),
+            expected_revision: input.get_u32()?,
+            instance: sim::ItemInstanceId(input.get_u64()?),
+            target: decode_inventory_target(input)?,
+        },
+        1 => sim::InventoryTransaction::Split {
+            container: sim::ContainerId(input.get_u32()?),
+            expected_revision: input.get_u32()?,
+            instance: sim::ItemInstanceId(input.get_u64()?),
+            quantity: input.get_u16()?,
+            target: decode_inventory_target(input)?,
+        },
+        2 => sim::InventoryTransaction::Merge {
+            container: sim::ContainerId(input.get_u32()?),
+            expected_revision: input.get_u32()?,
+            source_instance: sim::ItemInstanceId(input.get_u64()?),
+            destination_instance: sim::ItemInstanceId(input.get_u64()?),
+            quantity: input.get_u16()?,
+        },
+        3 => sim::InventoryTransaction::Transfer {
+            source: sim::ContainerId(input.get_u32()?),
+            destination: sim::ContainerId(input.get_u32()?),
+            expected_source_revision: input.get_u32()?,
+            expected_destination_revision: input.get_u32()?,
+            instance: sim::ItemInstanceId(input.get_u64()?),
+            amount: match input.get_u8()? {
+                0 => sim::InventoryTransferAmount::Whole,
+                1 => sim::InventoryTransferAmount::Split(input.get_u16()?),
+                _ => return Err(WireError::Malformed("bad inventory transfer amount tag")),
+            },
+            target: decode_inventory_target(input)?,
+        },
+        _ => return Err(WireError::Malformed("unknown inventory transaction tag")),
+    })
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct SnapshotMetaSectionBytes {
     pub match_header: usize,
+    pub inventories: usize,
     pub events: usize,
     pub aliases: usize,
     pub entity_dobjs: usize,
@@ -722,6 +863,7 @@ pub struct SnapshotMetaSectionBytes {
 impl SnapshotMetaSectionBytes {
     pub fn total(self) -> usize {
         self.match_header
+            + self.inventories
             + self.events
             + self.aliases
             + self.entity_dobjs
@@ -740,13 +882,19 @@ fn section_span(out: &WireWriter, from: usize) -> usize {
     out.len() - from
 }
 
-pub fn encode_snapshot_meta(out: &mut WireWriter, meta: &SnapshotMeta, world_objects_wire: &[u8]) {
-    let _ = encode_snapshot_meta_sections(out, meta, world_objects_wire);
+pub fn encode_snapshot_meta(
+    out: &mut WireWriter,
+    meta: &SnapshotMeta,
+    inventories_wire: &[u8],
+    world_objects_wire: &[u8],
+) {
+    let _ = encode_snapshot_meta_sections(out, meta, inventories_wire, world_objects_wire);
 }
 
 pub fn encode_snapshot_meta_sections(
     out: &mut WireWriter,
     meta: &SnapshotMeta,
+    inventories_wire: &[u8],
     world_objects_wire: &[u8],
 ) -> SnapshotMetaSectionBytes {
     let mut sizes = SnapshotMetaSectionBytes::default();
@@ -770,6 +918,11 @@ pub fn encode_snapshot_meta_sections(
         encode_client_meta(out, row);
     }
     sizes.match_header = section_span(out, mark);
+    mark = out.len();
+    debug_assert!(inventories_wire.len() <= u32::MAX as usize);
+    out.put_u32(inventories_wire.len() as u32);
+    out.put_bytes(inventories_wire);
+    sizes.inventories = section_span(out, mark);
     mark = out.len();
     debug_assert!(meta.journal.len() <= u16::MAX as usize);
     out.put_u16(meta.journal.len() as u16);
@@ -830,7 +983,8 @@ pub fn encode_snapshot_meta_sections(
 pub fn decode_snapshot_meta(
     input: &mut WireReader<'_>,
     world_decoder: &mut WorldObjectSyncDecoder,
-) -> Result<(SnapshotMeta, Vec<u8>), WireError> {
+    inventory_decoder: &mut InventorySyncDecoder,
+) -> Result<(SnapshotMeta, Vec<u8>, Vec<u8>), WireError> {
     let phase = phase_from_tag(input.get_u8()?)?;
     let match_elapsed_ms = input.get_u32()?;
     let prematch_tag = input.get_u8()?;
@@ -849,8 +1003,14 @@ pub fn decode_snapshot_meta(
     let mut clients = Vec::with_capacity(count.min(64));
     for _ in 0..count {
         let client = ClientId(input.get_u32()?);
-        clients.push((client, decode_client_meta(input, client)?));
+        clients.push((client, decode_client_meta(input)?));
     }
+    let inventory_wire_len = input.get_u32()? as usize;
+    if inventory_wire_len > 512 * 1024 || inventory_wire_len > input.remaining() {
+        return Err(WireError::Malformed("inventory sync length exceeds limit"));
+    }
+    let mut inventory_wire = vec![0u8; inventory_wire_len];
+    input.get_bytes(&mut inventory_wire)?;
     let journal_count = input.get_u16()? as usize;
     let mut journal = Vec::with_capacity(journal_count.min(64));
     for _ in 0..journal_count {
@@ -884,6 +1044,7 @@ pub fn decode_snapshot_meta(
     let mut wire = vec![0u8; wire_len];
     input.get_bytes(&mut wire)?;
     let world_objects = world_decoder.apply_wire(&wire)?;
+    inventory_decoder.apply_wire(&inventory_wire, &mut clients)?;
     Ok((
         SnapshotMeta {
             phase,
@@ -912,6 +1073,7 @@ pub fn decode_snapshot_meta(
             item_ammo,
             item_pickups,
         },
+        inventory_wire,
         wire,
     ))
 }
@@ -1462,7 +1624,6 @@ fn encode_client_meta(out: &mut WireWriter, meta: &ClientSnapshotMeta) {
     }
     super::delta::encode_missile_target(out, lock.aim);
     out.put_i32(lock.acquire_started_at);
-    encode_player_inventory(out, meta.inventory.as_ref());
 }
 
 fn decode_shield_vector(input: &mut WireReader<'_>) -> Result<[f32; 3], WireError> {
@@ -1474,10 +1635,7 @@ fn decode_shield_vector(input: &mut WireReader<'_>) -> Result<[f32; 3], WireErro
     }
 }
 
-fn decode_client_meta(
-    input: &mut WireReader<'_>,
-    owner: ClientId,
-) -> Result<ClientSnapshotMeta, WireError> {
+fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, WireError> {
     let controls = sim::ScriptControls {
         frozen: input.get_u8()? != 0,
         weapons_disabled: input.get_u8()? != 0,
@@ -1692,7 +1850,6 @@ fn decode_client_meta(
         aim: super::delta::decode_missile_target(input)?,
         acquire_started_at: input.get_i32()?,
     };
-    let inventory = decode_player_inventory(input, owner)?;
     Ok(ClientSnapshotMeta {
         god_mode,
         controls,
@@ -1701,7 +1858,7 @@ fn decode_client_meta(
         lifecycle,
         loadout,
         life_sequence,
-        inventory,
+        inventory: None,
         item_use_spawn_ms,
         item_use_entity,
         ammo_clip,
@@ -1740,104 +1897,6 @@ fn decode_client_meta(
         menu_commands,
         location_selection,
     })
-}
-
-fn encode_player_inventory(out: &mut WireWriter, inventory: Option<&sim::PlayerInventory>) {
-    let Some(inventory) = inventory else {
-        out.put_u8(0);
-        return;
-    };
-    out.put_u8(1);
-    let backpack = inventory.backpack();
-    out.put_u32(backpack.revision());
-    out.put_u32(inventory.next_serial());
-    out.put_u16(backpack.items().len() as u16);
-    for item in backpack.items() {
-        let placement = backpack
-            .placement(item.id)
-            .expect("validated inventory item must have a placement");
-        out.put_u64(item.id.0);
-        out.put_u16(item.definition.0);
-        out.put_u16(item.quantity);
-        out.put_u16(item.condition);
-        out.put_u8(placement.x);
-        out.put_u8(placement.y);
-        out.put_u8(u8::from(placement.rotated));
-    }
-    match inventory.latest_notice() {
-        None => out.put_u8(0),
-        Some(notice) => {
-            out.put_u8(1);
-            out.put_u32(notice.request_id);
-            out.put_u16(notice.definition.0);
-            out.put_u16(notice.quantity);
-            out.put_u32(notice.revision);
-        }
-    }
-}
-
-fn decode_player_inventory(
-    input: &mut WireReader<'_>,
-    owner: ClientId,
-) -> Result<Option<sim::PlayerInventory>, WireError> {
-    match input.get_u8()? {
-        0 => return Ok(None),
-        1 => {}
-        _ => return Err(WireError::Malformed("bad player inventory tag")),
-    }
-    let revision = input.get_u32()?;
-    let next_serial = input.get_u32()?;
-    let count = usize::from(input.get_u16()?);
-    if count > 256 {
-        return Err(WireError::Malformed("backpack item count exceeds limit"));
-    }
-    let mut items = Vec::with_capacity(count);
-    let mut placements = Vec::with_capacity(count);
-    for _ in 0..count {
-        let id = sim::ItemInstanceId(input.get_u64()?);
-        let definition = sim::ItemDefId(input.get_u16()?);
-        items.push(sim::ItemInstance {
-            id,
-            definition,
-            quantity: input.get_u16()?,
-            condition: input.get_u16()?,
-        });
-        placements.push(sim::Placement {
-            instance: id,
-            x: input.get_u8()?,
-            y: input.get_u8()?,
-            rotated: match input.get_u8()? {
-                0 => false,
-                1 => true,
-                _ => return Err(WireError::Malformed("bad backpack rotation tag")),
-            },
-        });
-    }
-    let latest_notice = match input.get_u8()? {
-        0 => None,
-        1 => Some(sim::InventoryNotice {
-            request_id: input.get_u32()?,
-            definition: sim::ItemDefId(input.get_u16()?),
-            quantity: input.get_u16()?,
-            revision: input.get_u32()?,
-        }),
-        _ => return Err(WireError::Malformed("bad inventory notice tag")),
-    };
-    let inventory = sim::PlayerInventory::from_rows(
-        owner,
-        revision,
-        next_serial,
-        items,
-        placements,
-        latest_notice,
-    )
-    .map_err(|_| WireError::Malformed("invalid player inventory"))?;
-    if latest_notice.is_some_and(|notice| notice.revision > revision) {
-        return Err(WireError::Malformed(
-            "inventory notice revision is in the future",
-        ));
-    }
-    Ok(Some(inventory))
 }
 
 fn encode_vision(out: &mut WireWriter, vision: Option<&sim::VisionChange>) {
@@ -2247,6 +2306,36 @@ pub(crate) fn encode_event(out: &mut WireWriter, event: &SimEvent) {
             out.put_u32(request_id);
             out.put_u8(reason.wire_tag());
         }
+        SimEvent::InventoryTransactionAccepted {
+            request_id,
+            kind,
+            instance,
+            source_revision,
+            destination_revision,
+        } => {
+            out.put_u8(21);
+            out.put_u32(request_id);
+            out.put_u8(kind.wire_tag());
+            out.put_u64(instance.0);
+            out.put_u32(source_revision);
+            match destination_revision {
+                None => out.put_u8(0),
+                Some(revision) => {
+                    out.put_u8(1);
+                    out.put_u32(revision);
+                }
+            }
+        }
+        SimEvent::InventoryTransactionRejected {
+            request_id,
+            kind,
+            reason,
+        } => {
+            out.put_u8(22);
+            out.put_u32(request_id);
+            out.put_u8(kind.wire_tag());
+            out.put_u8(reason.wire_tag());
+        }
         SimEvent::ConfigurationChangeAccepted {
             request_id,
             from,
@@ -2353,6 +2442,33 @@ pub(crate) fn decode_event(input: &mut WireReader<'_>) -> Result<SimEvent, WireE
             request_id: input.get_u32()?,
             reason: sim::InventoryGrantRejectReason::from_wire_tag(input.get_u8()?).ok_or(
                 WireError::Malformed("unknown inventory grant reject reason"),
+            )?,
+        }),
+        21 => {
+            let request_id = input.get_u32()?;
+            let kind = sim::InventoryTransactionKind::from_wire_tag(input.get_u8()?)
+                .ok_or(WireError::Malformed("unknown inventory transaction kind"))?;
+            let instance = sim::ItemInstanceId(input.get_u64()?);
+            let source_revision = input.get_u32()?;
+            let destination_revision = match input.get_u8()? {
+                0 => None,
+                1 => Some(input.get_u32()?),
+                _ => return Err(WireError::Malformed("bad destination revision tag")),
+            };
+            Ok(SimEvent::InventoryTransactionAccepted {
+                request_id,
+                kind,
+                instance,
+                source_revision,
+                destination_revision,
+            })
+        }
+        22 => Ok(SimEvent::InventoryTransactionRejected {
+            request_id: input.get_u32()?,
+            kind: sim::InventoryTransactionKind::from_wire_tag(input.get_u8()?)
+                .ok_or(WireError::Malformed("unknown inventory transaction kind"))?,
+            reason: sim::InventoryTransactionRejectReason::from_wire_tag(input.get_u8()?).ok_or(
+                WireError::Malformed("unknown inventory transaction reject reason"),
             )?,
         }),
         16 => Ok(SimEvent::ConfigurationChangeAccepted {

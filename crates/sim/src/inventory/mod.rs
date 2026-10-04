@@ -31,6 +31,127 @@ pub enum InventoryGrantRejectReason {
     InstanceIdsExhausted,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InventoryTransactionKind {
+    Move,
+    Split,
+    Merge,
+    Transfer,
+}
+
+impl InventoryTransactionKind {
+    pub const fn wire_tag(self) -> u8 {
+        match self {
+            Self::Move => 0,
+            Self::Split => 1,
+            Self::Merge => 2,
+            Self::Transfer => 3,
+        }
+    }
+
+    pub const fn from_wire_tag(tag: u8) -> Option<Self> {
+        Some(match tag {
+            0 => Self::Move,
+            1 => Self::Split,
+            2 => Self::Merge,
+            3 => Self::Transfer,
+            _ => return None,
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InventoryTransactionRejectReason {
+    NotAlive,
+    ContainerUnavailable,
+    ItemNotFound,
+    StaleRevision,
+    OutOfBounds,
+    Overlap,
+    NotRotatable,
+    InvalidQuantity,
+    IncompatibleStack,
+    StackCapacity,
+    NoSpace,
+    SameContainer,
+    InvalidState,
+    InstanceIdsExhausted,
+}
+
+impl InventoryTransactionRejectReason {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::NotAlive => "player is not alive",
+            Self::ContainerUnavailable => "container is not available to this player",
+            Self::ItemNotFound => "item instance is not in the source container",
+            Self::StaleRevision => "container revision is stale",
+            Self::OutOfBounds => "placement is outside the container",
+            Self::Overlap => "placement overlaps another item",
+            Self::NotRotatable => "item cannot be rotated",
+            Self::InvalidQuantity => "quantity is invalid for this transaction",
+            Self::IncompatibleStack => "item stacks are incompatible",
+            Self::StackCapacity => "destination stack has insufficient capacity",
+            Self::NoSpace => "container has no valid placement",
+            Self::SameContainer => "cross-container transfer requires distinct containers",
+            Self::InvalidState => "inventory state is invalid",
+            Self::InstanceIdsExhausted => "item instance IDs are exhausted",
+        }
+    }
+
+    pub const fn wire_tag(self) -> u8 {
+        match self {
+            Self::NotAlive => 0,
+            Self::ContainerUnavailable => 1,
+            Self::ItemNotFound => 2,
+            Self::StaleRevision => 3,
+            Self::OutOfBounds => 4,
+            Self::Overlap => 5,
+            Self::NotRotatable => 6,
+            Self::InvalidQuantity => 7,
+            Self::IncompatibleStack => 8,
+            Self::StackCapacity => 9,
+            Self::NoSpace => 10,
+            Self::SameContainer => 11,
+            Self::InvalidState => 12,
+            Self::InstanceIdsExhausted => 13,
+        }
+    }
+
+    pub const fn from_wire_tag(tag: u8) -> Option<Self> {
+        Some(match tag {
+            0 => Self::NotAlive,
+            1 => Self::ContainerUnavailable,
+            2 => Self::ItemNotFound,
+            3 => Self::StaleRevision,
+            4 => Self::OutOfBounds,
+            5 => Self::Overlap,
+            6 => Self::NotRotatable,
+            7 => Self::InvalidQuantity,
+            8 => Self::IncompatibleStack,
+            9 => Self::StackCapacity,
+            10 => Self::NoSpace,
+            11 => Self::SameContainer,
+            12 => Self::InvalidState,
+            13 => Self::InstanceIdsExhausted,
+            _ => return None,
+        })
+    }
+}
+
+impl core::fmt::Display for InventoryTransactionRejectReason {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct InventoryTransactionReceipt {
+    pub kind: InventoryTransactionKind,
+    pub instance: ItemInstanceId,
+    pub source_revision: u32,
+    pub destination_revision: Option<u32>,
+}
+
 impl InventoryGrantRejectReason {
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -251,6 +372,100 @@ impl PlayerInventory {
         Ok(notice)
     }
 
+    pub fn apply_transaction(
+        &mut self,
+        owner: ClientId,
+        transaction: crate::InventoryTransaction,
+    ) -> Result<InventoryTransactionReceipt, InventoryTransactionRejectReason> {
+        self.check_owner(owner)
+            .map_err(|_| InventoryTransactionRejectReason::InvalidState)?;
+        let mut next = self.clone();
+        let receipt = match transaction {
+            crate::InventoryTransaction::Move {
+                container,
+                expected_revision,
+                instance,
+                target,
+            } => {
+                next.expect_backpack(container)?;
+                next.backpack
+                    .move_within(instance, expected_revision, target, loot_catalog())
+                    .map_err(InventoryTransactionRejectReason::from_grid)?;
+                InventoryTransactionReceipt {
+                    kind: InventoryTransactionKind::Move,
+                    instance,
+                    source_revision: next.backpack.revision(),
+                    destination_revision: None,
+                }
+            }
+            crate::InventoryTransaction::Split {
+                container,
+                expected_revision,
+                instance,
+                quantity,
+                target,
+            } => {
+                next.expect_backpack(container)?;
+                let new_instance = next
+                    .allocate_instance(owner)
+                    .map_err(|_| InventoryTransactionRejectReason::InstanceIdsExhausted)?;
+                next.backpack
+                    .split_within(
+                        instance,
+                        expected_revision,
+                        quantity,
+                        new_instance,
+                        target,
+                        loot_catalog(),
+                    )
+                    .map_err(InventoryTransactionRejectReason::from_grid)?;
+                InventoryTransactionReceipt {
+                    kind: InventoryTransactionKind::Split,
+                    instance: new_instance,
+                    source_revision: next.backpack.revision(),
+                    destination_revision: None,
+                }
+            }
+            crate::InventoryTransaction::Merge {
+                container,
+                expected_revision,
+                source_instance,
+                destination_instance,
+                quantity,
+            } => {
+                next.expect_backpack(container)?;
+                next.backpack
+                    .merge_within(
+                        source_instance,
+                        destination_instance,
+                        expected_revision,
+                        quantity,
+                        loot_catalog(),
+                    )
+                    .map_err(InventoryTransactionRejectReason::from_grid)?;
+                InventoryTransactionReceipt {
+                    kind: InventoryTransactionKind::Merge,
+                    instance: destination_instance,
+                    source_revision: next.backpack.revision(),
+                    destination_revision: None,
+                }
+            }
+            crate::InventoryTransaction::Transfer {
+                source,
+                destination,
+                ..
+            } => {
+                next.expect_backpack(source)?;
+                next.expect_backpack(destination)?;
+                return Err(InventoryTransactionRejectReason::SameContainer);
+            }
+        };
+        next.check_owner(owner)
+            .map_err(|_| InventoryTransactionRejectReason::InvalidState)?;
+        *self = next;
+        Ok(receipt)
+    }
+
     pub fn check_owner(&self, owner: ClientId) -> Result<(), InventoryGrantRejectReason> {
         if self.backpack.id() != backpack_container_id(owner) || self.next_serial == 0 {
             return Err(InventoryGrantRejectReason::InvalidState);
@@ -265,16 +480,15 @@ impl PlayerInventory {
         let owner_prefix = u64::from(owner.0) << 32;
         let mut highest = 0u32;
         for item in self.backpack.items() {
-            if item.id.0 >> 32 != u64::from(owner.0) {
-                return Err(InventoryGrantRejectReason::InvalidState);
-            }
             let serial = item.id.0 as u32;
             if serial == 0 {
                 return Err(InventoryGrantRejectReason::InvalidState);
             }
-            highest = highest.max(serial);
-            if item.id.0 != owner_prefix | u64::from(serial) {
-                return Err(InventoryGrantRejectReason::InvalidState);
+            if item.id.0 >> 32 == u64::from(owner.0) {
+                highest = highest.max(serial);
+                if item.id.0 != owner_prefix | u64::from(serial) {
+                    return Err(InventoryGrantRejectReason::InvalidState);
+                }
             }
         }
         if self.next_serial <= highest {
@@ -297,6 +511,48 @@ impl PlayerInventory {
         Ok(ItemInstanceId(
             (u64::from(owner.0) << 32) | u64::from(serial),
         ))
+    }
+
+    fn expect_backpack(
+        &self,
+        container: ContainerId,
+    ) -> Result<(), InventoryTransactionRejectReason> {
+        if container == self.backpack.id() {
+            Ok(())
+        } else {
+            Err(InventoryTransactionRejectReason::ContainerUnavailable)
+        }
+    }
+}
+
+impl InventoryTransactionRejectReason {
+    fn from_grid(error: GridError) -> Self {
+        match error {
+            GridError::ItemNotFound(_) => Self::ItemNotFound,
+            GridError::PlacementOutOfBounds { .. } => Self::OutOfBounds,
+            GridError::PlacementOverlap { .. } => Self::Overlap,
+            GridError::NotRotatable(_) => Self::NotRotatable,
+            GridError::NoPlacement | GridError::TooManyItems(_) => Self::NoSpace,
+            GridError::StaleRevision { .. } => Self::StaleRevision,
+            GridError::SameContainer(_) => Self::SameContainer,
+            GridError::InvalidSplitQuantity { .. } | GridError::InvalidQuantity { .. } => {
+                Self::InvalidQuantity
+            }
+            GridError::DefinitionMismatch
+            | GridError::ConditionMismatch
+            | GridError::SameInstance(_) => Self::IncompatibleStack,
+            GridError::StackCapacity { .. } => Self::StackCapacity,
+            GridError::InvalidContainerId
+            | GridError::InvalidContainerDimensions(_)
+            | GridError::InvalidInstanceId
+            | GridError::DuplicateInstance(_)
+            | GridError::UnknownDefinition(_)
+            | GridError::InvalidCondition(_)
+            | GridError::PlacementMissing(_)
+            | GridError::RevisionOverflow(_)
+            | GridError::WeightOverflow
+            | GridError::ContainerInvariant(_) => Self::InvalidState,
+        }
     }
 }
 

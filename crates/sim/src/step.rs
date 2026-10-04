@@ -960,7 +960,57 @@ fn apply_actions(world: &mut FrameWorld, tick: Tick, actions: &[(ClientId, Clien
             } => {
                 apply_debug_grant_loot(world, tick, *id, request_id, &key, quantity);
             }
+            ClientAction::InventoryTransaction {
+                request_id,
+                transaction,
+            } => {
+                apply_inventory_transaction(world, tick, *id, request_id, transaction);
+            }
         }
+    }
+}
+
+fn apply_inventory_transaction(
+    world: &mut FrameWorld,
+    tick: Tick,
+    id: ClientId,
+    request_id: crate::ActionRequestId,
+    transaction: crate::InventoryTransaction,
+) {
+    let kind = transaction.kind();
+    let result = if !world
+        .client_meta(id)
+        .is_some_and(|meta| meta.lifecycle == ClientLifecycle::Alive)
+    {
+        Err(crate::InventoryTransactionRejectReason::NotAlive)
+    } else {
+        let meta = world.client_meta_mut(id);
+        let inventory = meta
+            .inventory
+            .get_or_insert_with(|| crate::PlayerInventory::new(id));
+        inventory.apply_transaction(id, transaction)
+    };
+    match result {
+        Ok(receipt) => world.push_event(
+            tick,
+            EventAudience::Client(id),
+            SimEvent::InventoryTransactionAccepted {
+                request_id,
+                kind: receipt.kind,
+                instance: receipt.instance,
+                source_revision: receipt.source_revision,
+                destination_revision: receipt.destination_revision,
+            },
+        ),
+        Err(reason) => world.push_event(
+            tick,
+            EventAudience::Client(id),
+            SimEvent::InventoryTransactionRejected {
+                request_id,
+                kind,
+                reason,
+            },
+        ),
     }
 }
 

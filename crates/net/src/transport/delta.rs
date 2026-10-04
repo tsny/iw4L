@@ -2,6 +2,7 @@ use playerstate_iw4::{PlayerState, UserCmd};
 use sim::{ClientId, ProjectileId, ProjectileState, Snapshot, Tick};
 use std::collections::HashMap;
 
+use crate::transport::inventory_wire::InventorySyncEncoder;
 use crate::transport::meta_wire::{WorldObjectSyncDecoder, WorldObjectSyncEncoder};
 use crate::transport::netfields::{PS_FIELD_COUNT, field_differs, read_field, write_field};
 use crate::transport::wire::{WireError, WireReader, WireWriter};
@@ -49,6 +50,8 @@ pub struct SnapshotEncoder {
     last_projectile_delta: ProjectileEntityDelta,
     world_objects: WorldObjectSyncEncoder,
     world_objects_wire: Vec<u8>,
+    inventories: InventorySyncEncoder,
+    inventories_wire: Vec<u8>,
 }
 
 impl SnapshotEncoder {
@@ -67,6 +70,11 @@ impl SnapshotEncoder {
     ) -> &[u8] {
         self.world_objects_wire = self.world_objects.encode(tick, current);
         &self.world_objects_wire
+    }
+
+    pub fn encode_inventories(&mut self, meta: &sim::SnapshotMeta) -> &[u8] {
+        self.inventories_wire = self.inventories.encode(meta);
+        &self.inventories_wire
     }
 
     pub fn encode(&mut self, snapshot: &Snapshot) -> SnapshotDelta {
@@ -108,6 +116,7 @@ impl SnapshotEncoder {
             .collect();
         self.world_objects
             .adopt_baseline(snapshot.meta.world_objects.clone());
+        self.inventories.adopt_baseline(&snapshot.meta);
     }
 
     pub fn reset(&mut self) {
@@ -116,6 +125,8 @@ impl SnapshotEncoder {
         self.last_projectile_delta = ProjectileEntityDelta::default();
         self.world_objects.reset();
         self.world_objects_wire.clear();
+        self.inventories.reset();
+        self.inventories_wire.clear();
     }
 }
 

@@ -5,6 +5,7 @@ pub mod bootstrap;
 pub mod delta;
 pub mod fragment;
 pub mod frame;
+pub mod inventory_wire;
 pub mod loopback_live;
 pub mod master;
 pub mod meta_wire;
