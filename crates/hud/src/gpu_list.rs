@@ -181,7 +181,6 @@ pub enum TessJob {
 pub struct HudTessPass {
     pub overhead_names: TessJob,
     pub compass: TessJob,
-    pub scorebar: TessJob,
     pub splash: TessJob,
     pub killfeed: TessJob,
     pub loot_status: TessJob,

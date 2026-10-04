@@ -23,7 +23,6 @@ use crate::playercard::{
     PlayerCardCache, PlayerCardRaster, UiLocalVars, spawn_playercard, update_playercard,
 };
 use crate::reticle::{ReticleAdsLatch, spawn_reticle, update_reticle};
-use crate::scorebar::{ScorebarRaster, spawn_scorebar, update_scorebar};
 use crate::scoreboard::{ScoreboardRaster, spawn_scoreboard, update_scoreboard};
 use crate::splash::{PendingSplash, SplashRaster, SplashSlots, spawn_splash, update_splash};
 use crate::targetmap::{TargetmapRaster, spawn_targetmap, update_targetmap};
@@ -109,7 +108,6 @@ impl Plugin for HudPlugin {
                         )
                             .chain(),
                         (
-                            update_scorebar,
                             update_splash,
                             update_killfeed,
                             update_scoreboard,
@@ -329,7 +327,6 @@ fn ensure_hud_root(mut commands: Commands, existing: Query<Entity, With<HudRoot>
             spawn_iris(root);
             spawn_hud_elems_back(root);
             spawn_compass(root);
-            spawn_scorebar(root);
             spawn_weaponbar(root);
             spawn_splash(root);
             spawn_killfeed(root);
@@ -412,24 +409,15 @@ fn flush_hud_tess(
         (Entity, &mut Node, &mut crate::gpu_list::GpuListLatch),
         With<CompassRaster>,
     >,
-    mut scorebar: Query<
-        (Entity, &mut Node, &mut crate::gpu_list::GpuListLatch),
-        (With<ScorebarRaster>, Without<CompassRaster>),
-    >,
     mut weaponbar: Query<
         (Entity, &mut Node, &mut crate::gpu_list::GpuListLatch),
-        (
-            With<WeaponbarRaster>,
-            Without<CompassRaster>,
-            Without<ScorebarRaster>,
-        ),
+        (With<WeaponbarRaster>, Without<CompassRaster>),
     >,
     mut splash: Query<
         (Entity, &mut Node, &mut crate::gpu_list::GpuListLatch),
         (
             With<SplashRaster>,
             Without<CompassRaster>,
-            Without<ScorebarRaster>,
             Without<WeaponbarRaster>,
         ),
     >,
@@ -438,7 +426,6 @@ fn flush_hud_tess(
         (
             With<KillfeedRaster>,
             Without<CompassRaster>,
-            Without<ScorebarRaster>,
             Without<WeaponbarRaster>,
             Without<SplashRaster>,
         ),
@@ -451,25 +438,12 @@ fn flush_hud_tess(
     let w = surface.width();
     let h = surface.height();
     let compass_job = std::mem::take(&mut pass.compass);
-    let scorebar_job = std::mem::take(&mut pass.scorebar);
     let weaponbar_job = std::mem::take(&mut pass.weaponbar);
     let splash_job = std::mem::take(&mut pass.splash);
     let killfeed_job = std::mem::take(&mut pass.killfeed);
     if let Ok((_, mut host, mut latch)) = compass.single_mut() {
         gpu_list::apply_tess_job(
             compass_job,
-            &mut host,
-            &mut latch,
-            &mut hud_images,
-            &mut images,
-            &mut frame,
-            w,
-            h,
-        );
-    }
-    if let Ok((_, mut host, mut latch)) = scorebar.single_mut() {
-        gpu_list::apply_tess_job(
-            scorebar_job,
             &mut host,
             &mut latch,
             &mut hud_images,

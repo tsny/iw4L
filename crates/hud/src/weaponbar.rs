@@ -550,66 +550,6 @@ fn ads_javelin(ps: &PlayerState, weapons: &PreparedWeapons) -> bool {
             .is_some_and(|facts| facts.overlay_interface == WEAPOVERLAYINTERFACE_JAVELIN)
 }
 
-#[derive(Clone, Default)]
-pub(crate) struct HudPlayerVis {
-    pub ui_active: bool,
-    pub flashbanged: bool,
-    pub weapon_script: String,
-    pub ads_javelin: bool,
-    pub missilecam: bool,
-    pub emp_jammed: bool,
-    pub game_ended: bool,
-}
-
-#[derive(bevy::ecs::system::SystemParam)]
-pub(crate) struct HudPlayerVisInput<'w> {
-    input: Option<Res<'w, frame::HudInputView>>,
-    weapons: Option<Res<'w, PreparedWeapons>>,
-    cg_clock: Res<'w, FrameClock>,
-}
-
-impl HudPlayerVisInput<'_> {
-    pub(crate) fn read(&self, presented: &PresentedSnapshot, local: sim::ClientId) -> HudPlayerVis {
-        let ui_active = self.input.as_ref().is_some_and(|i| i.script_menu_open);
-        let Some(ps) = presented.player(local) else {
-            return HudPlayerVis {
-                ui_active,
-                ..HudPlayerVis::default()
-            };
-        };
-        let snapshot = presented.snapshot();
-        let weapons = self.weapons.as_deref();
-        HudPlayerVis {
-            ui_active,
-            flashbanged: is_flashbanged(
-                self.cg_clock.time(),
-                ps.shellshock_time,
-                ps.shellshock_duration,
-                presented
-                    .shellshock(local)
-                    .map_or(SCREEN_BLEND_BLURRED, |shock| shock.screen_type),
-            ) != 0,
-            weapon_script: weapons
-                .map(|w| {
-                    w.0.script_name_of(get_viewmodel_weapon_index(ps))
-                        .to_owned()
-                })
-                .unwrap_or_default(),
-            ads_javelin: weapons.is_some_and(|w| ads_javelin(ps, w)),
-            missilecam: snapshot
-                .and_then(|s| s.meta.for_client(local))
-                .is_some_and(|m| m.remote_missile.is_some()),
-            emp_jammed: ps.other_flags & 0x400 != 0,
-            game_ended: snapshot.is_some_and(|s| {
-                matches!(
-                    s.meta.phase,
-                    sim::MatchPhase::Intermission | sim::MatchPhase::PostGame
-                )
-            }),
-        }
-    }
-}
-
 fn weapon_lock_view(
     ps: &PlayerState,
     weapons: &PreparedWeapons,
