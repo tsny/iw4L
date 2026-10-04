@@ -1,13 +1,12 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use asset_game::MenuCatalog;
-use assets::{PreparedLocalizedStrings, PreparedWeapons};
+use assets::PreparedLocalizedStrings;
 use bevy::prelude::*;
 use hud_iw4::{
     GAME_MSG_WIN0_HORZ_ALIGN, GAME_MSG_WIN0_LINE_COUNT, GAME_MSG_WIN0_MSG_TIME_MS,
     GAME_MSG_WIN0_TEXT_SCALE, GAME_MSG_WIN0_TEXT_STYLE, GAME_MSG_WIN0_VERT_ALIGN, GAME_MSG_WIN0_X,
-    KILLICON_DIED, game_msg_win0_line_y, gamenotify_line, killicon_stretch_uv,
-    killicon_virtual_size, normalized_text_scale, obituary_mod, obituary_mod_killicon,
+    game_msg_win0_line_y, gamenotify_line, normalized_text_scale,
 };
 use net::LocalPresentClient;
 
@@ -21,20 +20,6 @@ use crate::scorebar::milliseconds;
 
 #[derive(Clone, Debug)]
 enum KillfeedLine {
-    Obituary {
-        start_ms: i32,
-        icon: String,
-        icon_namespace: asset_core::AssetNamespace,
-        attacker: String,
-        has_attacker: bool,
-        victim: String,
-        attacker_team: i32,
-        victim_team: i32,
-
-        kill_icon_ratio: i32,
-
-        flip_kill_icon: bool,
-    },
     Notify {
         start_ms: i32,
         text: String,
@@ -45,17 +30,9 @@ enum KillfeedLine {
 impl KillfeedLine {
     fn start_ms(&self) -> i32 {
         match self {
-            Self::Obituary { start_ms, .. } | Self::Notify { start_ms, .. } => *start_ms,
+            Self::Notify { start_ms, .. } => *start_ms,
         }
     }
-}
-
-struct KillIconPick {
-    stem: String,
-
-    namespace: asset_core::AssetNamespace,
-    ratio: i32,
-    flip: bool,
 }
 
 #[derive(Resource, Default)]
@@ -79,129 +56,6 @@ pub(crate) fn spawn_killfeed(root: &mut ChildSpawnerCommands) {
 
 fn hide(pass: &mut HudTessPass) {
     pass.killfeed = TessJob::Hide;
-}
-
-fn pick_kill_icon(
-    payload: &sim::EntityEventPayload,
-    weapons: Option<&PreparedWeapons>,
-) -> KillIconPick {
-    let chrome = crate::images::HUD_CHROME_NAMESPACE;
-
-    if let Some(mod_) = obituary_mod(payload.event_parm) {
-        let Some(stem) = obituary_mod_killicon(mod_) else {
-            return KillIconPick {
-                stem: String::new(),
-                namespace: chrome,
-                ratio: 0,
-                flip: false,
-            };
-        };
-        return KillIconPick {
-            stem: stem.to_owned(),
-            namespace: chrome,
-            ratio: 0,
-            flip: false,
-        };
-    }
-    let weapon = payload.event_parm as u32;
-    let (ratio, flip) = match weapons.and_then(|reg| reg.0.facts_of(weapon)) {
-        Some(facts) => (facts.kill_icon_ratio, facts.flip_kill_icon),
-        None => (0, false),
-    };
-    let (stem, namespace) = if let Some(reg) = weapons {
-        let ns = reg.0.namespace_of(weapon).unwrap_or(chrome);
-        if let Some(image) = reg.0.kill_icon_image_of(weapon) {
-            (image.to_owned(), ns)
-        } else if let Some(name) = reg.0.kill_icon_of(weapon) {
-            (name.to_owned(), ns)
-        } else {
-            (KILLICON_DIED.to_owned(), chrome)
-        }
-    } else {
-        (KILLICON_DIED.to_owned(), chrome)
-    };
-    KillIconPick {
-        stem,
-        namespace,
-        ratio,
-        flip,
-    }
-}
-
-fn snapshot_client_team(presented: &net::PresentedSnapshot, client: i32) -> i32 {
-    if client < 0 {
-        return 0;
-    }
-    presented
-        .snapshot()
-        .and_then(|snap| snap.meta.for_client(sim::ClientId(client as u32)))
-        .map_or(0, |meta| meta.client_state_team)
-}
-
-fn obituary_name_color(local_team: i32, team: i32) -> [f32; 4] {
-    if !matches!(local_team, 1 | 2) || !matches!(team, 1 | 2) {
-        return [1.0, 1.0, 1.0, 1.0];
-    }
-    let rgb = if team == local_team {
-        gamemode_iw4::TEAM_COLOR_MY_TEAM
-    } else {
-        gamemode_iw4::TEAM_COLOR_ENEMY_TEAM
-    };
-    let mut color = [1.0; 4];
-    for (slot, value) in color.iter_mut().zip(rgb.split_whitespace()) {
-        *slot = value.parse().unwrap_or(1.0);
-    }
-    color
-}
-
-fn snapshot_client_name(presented: &net::PresentedSnapshot, client: i32) -> String {
-    if client < 0 {
-        return String::new();
-    }
-    let Some(snap) = presented.snapshot() else {
-        return String::new();
-    };
-    let Some(meta) = snap.meta.for_client(sim::ClientId(client as u32)) else {
-        return String::new();
-    };
-    match entity_iw4::client_state_name(&meta.name) {
-        Some(s) => s.to_owned(),
-        None => String::new(),
-    }
-}
-
-pub(crate) fn obituary(
-    obituary: On<net::EntityObituary>,
-    mut window: ResMut<KillfeedWindow>,
-    weapons: Option<Res<PreparedWeapons>>,
-    presented: Res<net::PresentedSnapshot>,
-) {
-    if obituary.in_killcam {
-        return;
-    }
-    let payload = obituary.event.payload;
-    let pick = pick_kill_icon(&payload, weapons.as_deref());
-    let attacker = snapshot_client_name(&presented, payload.attacker_entity_num);
-    let victim = snapshot_client_name(&presented, payload.other_entity_num);
-    let attacker_team = snapshot_client_team(&presented, payload.attacker_entity_num);
-    let victim_team = snapshot_client_team(&presented, payload.other_entity_num);
-    let now = milliseconds() as i32;
-    window.lines.push_back(KillfeedLine::Obituary {
-        start_ms: now,
-        icon: pick.stem,
-        icon_namespace: pick.namespace,
-        attacker,
-        has_attacker: (0..18).contains(&payload.attacker_entity_num)
-            && payload.attacker_entity_num != payload.other_entity_num,
-        victim,
-        attacker_team,
-        victim_team,
-        kill_icon_ratio: pick.ratio,
-        flip_kill_icon: pick.flip,
-    });
-    while window.lines.len() > GAME_MSG_WIN0_LINE_COUNT {
-        window.lines.pop_front();
-    }
 }
 
 fn text_cmd(
@@ -334,23 +188,10 @@ pub(crate) fn update_killfeed(
 
     let names_ok = match window.lines.back() {
         None => true,
-        Some(KillfeedLine::Obituary {
-            has_attacker,
-            attacker,
-            victim,
-            ..
-        }) => (!*has_attacker || !attacker.is_empty()) && !victim.is_empty(),
         Some(KillfeedLine::Notify { text, .. }) => !text.is_empty(),
     };
     match window.lines.back() {
         None => {}
-        Some(KillfeedLine::Obituary { .. }) => {
-            if !names_ok {
-                gaps.raise(GapCause::ObituaryNoClientInfo);
-            } else {
-                gaps.clear(HudGap::Obituary);
-            }
-        }
         Some(KillfeedLine::Notify { name_empty, .. }) => {
             if *name_empty {
                 gaps.raise(GapCause::GameNotifyNoClientInfo);
@@ -360,7 +201,6 @@ pub(crate) fn update_killfeed(
         }
     }
 
-    let local_team = snapshot_client_team(&presented, local.0.0 as i32);
     let font = catalog.as_ref().and_then(|c| c.font(HUD_SMALL_FONT));
     let (nscale, font_material) = match font {
         Some(def) => (
@@ -425,106 +265,6 @@ pub(crate) fn update_killfeed(
                         text.clone(),
                         [1.0; 4],
                         "killfeed_game_msg",
-                    ));
-                }
-            }
-            KillfeedLine::Obituary {
-                icon,
-                icon_namespace,
-                attacker,
-                has_attacker,
-                victim,
-                attacker_team,
-                victim_team,
-                kill_icon_ratio,
-                flip_kill_icon,
-                ..
-            } => {
-                let mut x_virtual = GAME_MSG_WIN0_X;
-                let line_names = (!*has_attacker || !attacker.is_empty())
-                    && !victim.is_empty()
-                    && font.is_some()
-                    && font_tex_ok;
-                if line_names && *has_attacker {
-                    if let Some(def) = font {
-                        let attacker_w = text_width(def, attacker) as f32 * nscale;
-                        let applied = surface.apply_rect(
-                            x_virtual,
-                            y_virtual,
-                            nscale,
-                            nscale,
-                            GAME_MSG_WIN0_HORZ_ALIGN,
-                            GAME_MSG_WIN0_VERT_ALIGN,
-                        );
-                        cmds.push(text_cmd(
-                            applied.x,
-                            applied.y,
-                            applied.w,
-                            applied.h,
-                            font_material.clone(),
-                            attacker.clone(),
-                            obituary_name_color(local_team, *attacker_team),
-                            "killfeed_obituary",
-                        ));
-                        x_virtual += attacker_w + GAME_MSG_WIN0_TEXT_SCALE * 4.0;
-                    }
-                }
-
-                let (icon_vw, icon_vh) = killicon_virtual_size(*kill_icon_ratio);
-                let (s0, s1) = killicon_stretch_uv(*flip_kill_icon);
-                let placed = surface.apply_rect(
-                    x_virtual,
-                    y_virtual - icon_vh,
-                    icon_vw,
-                    icon_vh,
-                    GAME_MSG_WIN0_HORZ_ALIGN,
-                    GAME_MSG_WIN0_VERT_ALIGN,
-                );
-                let icon_ok = hud_images.get(*icon_namespace, icon, &mut images).is_some();
-                if !icon_ok {
-                    gaps.raise(GapCause::ObituaryKillIconMissing {
-                        name: icon.clone(),
-                        miss,
-                    });
-                } else {
-                    cmds.push(Draw2dCmd {
-                        material_namespace: *icon_namespace,
-                        x: (placed.x + 0.5).floor(),
-                        y: (placed.y + 0.5).floor(),
-                        w: placed.w,
-                        h: placed.h,
-                        s0,
-                        t0: 0.0,
-                        s1,
-                        t1: 1.0,
-                        color: [1.0, 1.0, 1.0, 1.0],
-                        material: icon.clone(),
-                        op: Draw2dOp::StretchPic,
-                        provenance: Draw2dProvenance::CgDraw {
-                            site: "killfeed_obituary",
-                        },
-                        layer: 1,
-                    });
-                }
-                if line_names {
-                    x_virtual += icon_vw + GAME_MSG_WIN0_TEXT_SCALE * 4.0;
-                    let applied = surface.apply_rect(
-                        x_virtual,
-                        y_virtual,
-                        nscale,
-                        nscale,
-                        GAME_MSG_WIN0_HORZ_ALIGN,
-                        GAME_MSG_WIN0_VERT_ALIGN,
-                    );
-                    cmds.push(text_cmd(
-                        applied.x,
-                        applied.y,
-                        applied.w,
-                        applied.h,
-                        font_material.clone(),
-                        victim.clone(),
-                        obituary_name_color(local_team, *victim_team),
-                        "killfeed_obituary",
                     ));
                 }
             }

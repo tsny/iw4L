@@ -66,7 +66,6 @@ impl Plugin for HudPlugin {
         frame::register_ui_contracts(app);
         crate::overhead_names::register(app);
         app.add_message::<LifeStarted>()
-            .add_observer(crate::killfeed::obituary)
             .add_systems(
                 Update,
                 (
