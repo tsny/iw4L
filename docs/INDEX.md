@@ -23,3 +23,4 @@ game. Keep them this short: nobody opens a long file twice.
 | [`GSC-RUNTIME.md`](GSC-RUNTIME.md) | GSC → executable IR → Bevy runtime; args, arrays and tables still share one `Runtime` | implementing gameplay or script execution |
 | [`GSC-POSTFX.md`](GSC-POSTFX.md) | script vision, color correction, blur, DoF and bloom | authoring or debugging GSC post effects |
 | [`BOTS.md`](BOTS.md) | host AI: the per-tick pipeline, what a probe that never ran may not claim, the shared query budget, resumable routes, fighting from a position | bot decisions, bot movement, "why is it standing there" |
+| [Loot and grid inventory design](../LOOT-INVENTORY.md) | canonical architecture, ownership boundaries, work packages, current state and handoff protocol for the proposed loot subsystem | starting or handing over loot and inventory work |

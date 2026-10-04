@@ -1,5 +1,6 @@
 # Machine-local config (games paths, etc.)
 .env
+/.local/
 
 # Rust
 /target/
