@@ -9,14 +9,21 @@ pub(crate) fn register(registry: &mut ConsoleRegistry) {
     if registry.resolve("loot_grant").is_some() {
         return;
     }
-    let keys = sim::loot_catalog()
-        .definitions()
-        .iter()
-        .map(|definition| definition.key.to_string());
+    let keys = || {
+        sim::loot_catalog()
+            .definitions()
+            .iter()
+            .map(|definition| definition.key.to_string())
+    };
     registry.register(
         crate::CommandSpec::new("loot_grant")
             .usage("loot_grant <namespace:item> [quantity] — add authored loot (needs cheats)")
-            .arg(StaticCompleter::new(keys)),
+            .arg(StaticCompleter::new(keys())),
+    );
+    registry.register(
+        crate::CommandSpec::new("loot_drop")
+            .usage("loot_drop <namespace:item> — drop the first backpack stack of an item")
+            .arg(StaticCompleter::new(keys())),
     );
 }
 
@@ -38,7 +45,21 @@ pub(crate) fn route(
         console.echo(message, capacity);
     };
 
-    for command in events.read().filter(|command| command.name == "loot_grant") {
+    for command in events.read() {
+        if command.name == "loot_drop" {
+            let message = drop_first_stack(
+                command,
+                &presented,
+                &local,
+                inbox.as_deref_mut(),
+                &mut sequence,
+            );
+            echo(message, &mut console, &mut line);
+            continue;
+        }
+        if command.name != "loot_grant" {
+            continue;
+        }
         let (key, quantity) = match command.args.as_slice() {
             [key] => (key.as_str(), 1),
             [key, raw_quantity] => match raw_quantity.parse::<u16>() {
@@ -123,5 +144,58 @@ pub(crate) fn route(
             &mut console,
             &mut line,
         );
+    }
+}
+
+fn drop_first_stack(
+    command: &ConsoleCommand,
+    presented: &PresentedSnapshot,
+    local: &LocalPresentClient,
+    inbox: Option<&mut ClientActionInbox>,
+    sequence: &mut net::ActionRequestIds,
+) -> String {
+    let [key] = command.args.as_slice() else {
+        return "usage: loot_drop <namespace:item>".into();
+    };
+    let Some(definition) = sim::loot_catalog()
+        .definitions()
+        .iter()
+        .find(|definition| definition.key.as_str() == key)
+    else {
+        return format!("loot_drop: unknown item `{key}`");
+    };
+    let Some(backpack) = presented
+        .snapshot()
+        .and_then(|snapshot| snapshot.meta.for_client(local.0))
+        .and_then(|meta| meta.inventory.as_ref())
+        .map(sim::PlayerInventory::backpack)
+    else {
+        return "loot_drop: no backpack — spawn a class first".into();
+    };
+    let Some(item) = backpack
+        .items()
+        .iter()
+        .find(|item| item.definition == definition.id)
+    else {
+        return format!("loot_drop: no {key} in the backpack");
+    };
+    let Some(inbox) = inbox else {
+        return "loot_drop: no action inbox".into();
+    };
+    let request_id = sequence.allocate();
+    let action = sim::ClientAction::InventoryTransaction {
+        request_id,
+        transaction: sim::InventoryTransaction::Drop {
+            container: backpack.id(),
+            expected_revision: backpack.revision(),
+            instance: item.id,
+        },
+    };
+    match inbox.push(local.0, action) {
+        Ok(()) => format!(
+            "loot_drop: queued {key} ×{} request_id={request_id}",
+            item.quantity
+        ),
+        Err(error) => format!("loot_drop: {error}"),
     }
 }

@@ -211,6 +211,15 @@ fn submit_runtime_drops(
                 destination_instance,
                 quantity,
             },
+            DropAction::DropToWorld {
+                container,
+                expected_revision,
+                instance,
+            } => sim::InventoryTransaction::Drop {
+                container,
+                expected_revision,
+                instance,
+            },
         };
         let action = sim::ClientAction::InventoryTransaction {
             request_id,

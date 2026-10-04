@@ -84,7 +84,7 @@ impl Default for InventoryOverlay {
     fn default() -> Self {
         Self {
             open: false,
-            status: "Drag an item to a cell. Press R while dragging to rotate.".into(),
+            status: "Drag an item to a cell, or off the grid to drop it. R rotates.".into(),
             drag: None,
             hover: None,
             pending: BTreeMap::new(),
@@ -148,8 +148,10 @@ impl InventoryOverlay {
 
     pub fn complete_drop(&mut self, view: &InventoryView) -> Result<DropRequest, String> {
         let dragged = self.drag.take().ok_or("No item is being dragged.")?;
-        let target = self.hover.ok_or("No drop target is selected.")?;
-        let action = evaluate_drop(view, dragged, target)?;
+        let action = match self.hover {
+            Some(target) => evaluate_drop(view, dragged, target)?,
+            None => evaluate_world_drop(view, dragged)?,
+        };
         let id = self.allocate_drop();
         self.pending.insert(dragged.instance, id);
         Ok(DropRequest { id, action })
@@ -196,6 +198,11 @@ pub enum DropAction {
         source_instance: ItemInstanceId,
         destination_instance: ItemInstanceId,
         quantity: u16,
+    },
+    DropToWorld {
+        container: ContainerId,
+        expected_revision: u32,
+        instance: ItemInstanceId,
     },
 }
 
@@ -271,6 +278,35 @@ pub fn evaluate_drop(
             Ok(action)
         }
     }
+}
+
+/// Releasing a backpack item off every grid drops it at the player's feet.
+pub(crate) fn evaluate_world_drop(
+    view: &InventoryView,
+    dragged: DraggedItem,
+) -> Result<DropAction, String> {
+    if dragged.pane != InventoryPane::Player {
+        return Err("Only backpack items can be dropped.".into());
+    }
+    let item = view
+        .player
+        .item(dragged.instance)
+        .ok_or("source item is unavailable")?;
+    let definition = view
+        .catalog
+        .definition(item.definition)
+        .ok_or("item definition is unavailable")?;
+    if definition.world_model.is_none() {
+        return Err(format!(
+            "{} has no world model and cannot be dropped.",
+            definition.name
+        ));
+    }
+    Ok(DropAction::DropToWorld {
+        container: view.player.id(),
+        expected_revision: view.player.revision(),
+        instance: dragged.instance,
+    })
 }
 
 pub fn preview_action(view: &InventoryView, action: DropAction) -> Result<(), String> {
@@ -369,6 +405,19 @@ pub fn apply_action(
                 catalog,
             )
             .map_err(|error| error.to_string()),
+        DropAction::DropToWorld {
+            expected_revision,
+            instance,
+            ..
+        } => {
+            player
+                .expect_revision(expected_revision)
+                .map_err(|error| error.to_string())?;
+            player
+                .remove(instance)
+                .map(|_| ())
+                .map_err(|error| error.to_string())
+        }
         DropAction::Place { .. } => Err("unsupported container transfer".into()),
     }
 }
