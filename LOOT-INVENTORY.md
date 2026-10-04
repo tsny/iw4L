@@ -1,6 +1,6 @@
 # Loot and grid inventory design
 
-Status: proposed design; implementation has not started. Last updated: 2026-10-04.
+Status: implementation in progress; catalog and grid core complete. Last updated: 2026-10-04.
 
 This is the canonical, living source for the loot and grid-inventory work. It records the intended architecture, package boundaries, current state, and next handoff. Chats are not a source of truth. Session evidence and historical decisions belong in `context/artifacts/2026-10-04-loot-inventory/`; this file is updated when the present design or status changes.
 
@@ -140,6 +140,8 @@ The asset-free lab uses the same catalog, grid engine, and UI components with ge
 
 ### Catalog and grid core
 
+Status: complete on 2026-10-04.
+
 Owned paths: new `crates/inventory/`, workspace manifests, and `content/loot/base/`. Deliver strict schema parsing, canonical catalog/digest input, instance/container types, placement/rotation/stack/transfer validation, the initial item pack, and public invariant checks. This package requires no Bevy or game data. Complete when `cargo check -p inventory` and asset-free catalog/invariant checks pass.
 
 ### Asset-free authoring tools
@@ -178,11 +180,11 @@ Every package runs the narrowest relevant Cargo checks and records what could no
 
 ## Current state and next handoff
 
-- Implemented: none; only the design and handoff structure exist.
-- Verified during design: the one-step simulation funnel, weapon-specific dropped-item path, fixed-size client-action codec, snapshot meta codec, session content manifest, UI overlay layers, and current menu/console input capture seams.
+- Implemented: the pure `inventory` crate; strict schema-1 JSON parsing; canonical sorted IDs and digest bytes; item, instance, placement and container identities; bounded grid validation; deterministic first-fit; rotation; split/merge; atomic revision-checked cross-container transfers; weight calculation; and the four-item base pack.
+- Verified: `cargo check --workspace --all-targets`; crate-local Clippy with warnings denied; an asset-free disposable probe covering catalog reordering/digest stability, unknown-field rejection, overlap rejection, rotation, split/merge, cross-container transfer, stale revisions, out-of-bounds atomicity, invariant checks, and weight; the probe was removed after its output was recorded in the artifact.
 - Not verified: live inventory UX, world-model availability, map use targeting, multiplayer bandwidth, death policy, or persistence.
 - Current blocker: live map/render acceptance needs legally obtained game data. Catalog, grid, authoring tools, simulation, codecs, and placeholder UI are not blocked.
-- Next package: **Catalog and grid core**. Do not begin persistence, weapon-item bridging, or world rendering first.
+- Next package: **Asset-free authoring tools**. Do not begin simulation integration, persistence, weapon-item bridging, or world rendering first.
 - Owner decisions still open: inventory/death retention policy; default backpack dimensions; initial keyboard binding; missing runtime presentation policy; whether rifle ammo targets the held weapon or an authored weapon family.
 
 ## Session finish

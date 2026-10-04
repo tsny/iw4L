@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "items": [
+    {
+      "key": "base:bandage",
+      "name": "Bandage",
+      "footprint": [1, 1],
+      "rotatable": false,
+      "max_stack": 4,
+      "weight_g": 80,
+      "use": {
+        "kind": "heal",
+        "amount": 25
+      }
+    },
+    {
+      "key": "base:medkit",
+      "name": "Medkit",
+      "footprint": [2, 2],
+      "rotatable": false,
+      "max_stack": 1,
+      "weight_g": 1200,
+      "use": {
+        "kind": "heal",
+        "amount": 75
+      }
+    },
+    {
+      "key": "base:rifle_ammo",
+      "name": "Rifle ammo pouch",
+      "footprint": [1, 2],
+      "rotatable": true,
+      "max_stack": 3,
+      "weight_g": 500,
+      "use": {
+        "kind": "restore_held_ammo",
+        "amount": 30
+      }
+    },
+    {
+      "key": "base:radio_parts",
+      "name": "Radio parts",
+      "footprint": [2, 1],
+      "rotatable": true,
+      "max_stack": 1,
+      "weight_g": 850
+    }
+  ]
+}

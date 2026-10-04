@@ -1467,7 +1467,7 @@ dependencies = [
  "foldhash 0.2.0",
  "glam",
  "indexmap",
- "inventory",
+ "inventory 0.3.24",
  "serde",
  "smallvec",
  "smol_str",
@@ -3722,6 +3722,15 @@ name = "input_iw4"
 version = "0.1.0"
 dependencies = [
  "playerstate_iw4",
+]
+
+[[package]]
+name = "inventory"
+version = "0.1.0"
+dependencies = [
+ "asset_core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

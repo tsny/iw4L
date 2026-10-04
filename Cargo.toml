@@ -41,6 +41,7 @@ members = [
     "crates/hud_iw4",
     "crates/killcam_iw4",
     "crates/input_iw4",
+    "crates/inventory",
     "crates/launcher",
     "crates/lighting_iw4",
     "crates/marks_iw4",
@@ -142,6 +143,7 @@ hud_iw4 = { path = "crates/hud_iw4" }
 structured_data_iw4 = { path = "crates/structured_data_iw4" }
 killcam_iw4 = { path = "crates/killcam_iw4" }
 input_iw4 = { path = "crates/input_iw4" }
+inventory = { path = "crates/inventory" }
 launcher = { path = "crates/launcher" }
 lighting_iw4 = { path = "crates/lighting_iw4" }
 marks_iw4 = { path = "crates/marks_iw4" }
